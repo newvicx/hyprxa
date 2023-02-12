@@ -24,27 +24,9 @@ class TimeseriesWorker(MongoWorker):
     """Manages the submission of timeseries samples to MongoDB in a background
     thread.
     """
-    def __init__(
-        self,
-        connection_url: str = "mongodb://localhost:27017",
-        database_name: str | None = None,
-        collection_name: str | None = None,
-        flush_interval: int = 10,
-        buffer_size: int = 200,
-        max_retries: int = 3,
-        expire_after: int = 2_592_000, # 30 days
-        **kwargs: Any
-    ) -> None:
-        super().__init__(
-            connection_url,
-            database_name,
-            collection_name,
-            flush_interval,
-            buffer_size,
-            max_retries,
-            **kwargs
-        )
-        self._expire_after = expire_after
+    def __init__(self, **kwargs: Any) -> None:
+        self._expire_after = kwargs.pop("expire_after")
+        super().__init__(**kwargs)
 
     @staticmethod
     def default_collection_name() -> str:
@@ -96,7 +78,7 @@ class TimeseriesWorker(MongoWorker):
                 except BulkWriteError as e:
                     codes = [detail.get("code") == 11000 for detail in e.details.get("writeErrors", [])]
                     if codes and not all(codes):
-                        raise e
+                        raise
                 self._pending_documents.clear()
                 self._pending_size = 0
                 self._retries = 0
@@ -133,15 +115,13 @@ class MongoTimeseriesHandler:
     Args:
         connection_url: Mongo DSN connection url.
         database_name: The database to save samples to.
-        collection_name: The collection name to save samples to. Defaults to 'timeseries'.
-        flush_interval: The time between flushes on the worker. Defaults to 10
-            seconds.
+        collection_name: The collection name to save samples to.
+        flush_interval: The time (in seconds) between flushes on the worker.
         buffer_size: The number of samples that can be buffered before a flush
             is done to the database.
         max_retries: The maximum number of attempts to make sending a batch of
-            samples before giving up on the batch. Defaults to 3
-        expire_after: The value of the TTL index for samples. Defaults to having
-            samples expire after 14 days.
+            samples before giving up on the batch.
+        expire_after: The value of the TTL index for samples.
     """
     worker: TimeseriesWorker = None
 
@@ -172,9 +152,7 @@ class MongoTimeseriesHandler:
         """Start the timeseries worker thread."""
         worker = TimeseriesWorker(**self._kwargs)
         worker.start()
-        worker.wait(timeout=5)
-        if not worker.is_running:
-            raise TimeoutError("Timed out waiting for worker.")
+        worker.wait()
         return worker
 
     def get_worker(self) -> TimeseriesWorker:
