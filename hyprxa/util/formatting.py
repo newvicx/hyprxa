@@ -31,3 +31,10 @@ def format_timeseries_rows(row: TimeseriesRow) -> List[JSONPrimitive]:
     for a file format.
     """
     return [row[0].isoformat(), *row[1]]
+
+
+def format_docstrings(description: str) -> str:
+    """Takes a docstring formatted string and converts it to a string with no
+    line breaks or extra spaces.
+    """
+    return " ".join(segment.strip() for segment in description.splitlines())
