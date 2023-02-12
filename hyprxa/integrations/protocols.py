@@ -81,6 +81,10 @@ class Client(Protocol):
         """
         ...
 
+    def add_connection(self, fut: asyncio.Task, connection: "Connection") -> None:
+        """Add a running connection to the client."""
+        ...
+
     def connection_lost(self, fut: asyncio.Future) -> None:
         """Callback after connections have stopped."""
         ...
@@ -108,13 +112,17 @@ class Connection(Protocol):
         """Toggle the online status of the connection."""
         ...
 
+    async def publish(self, data: SubscriptionMessage) -> None:
+        """Publish data to the client."""
+        ...
+
     async def run(self, *args: Any, **kwargs: Any) -> None:
         """Main implementation for the connection.
         
         This method should receive/retrieve, parse, and validate data from the
         source which it is connecting to.
         
-        When the connection status is 'online' data may be passed to the client.
+        When the connection status is 'online' data may be published to the client.
         """
         ...
 
@@ -180,6 +188,13 @@ class Subscriber(Protocol):
 
     async def wait(self) -> SubscriberCodes:
         """Wait for new data to be published."""
+        ...
+
+    async def wait_for_stop(self) -> None:
+        """Waits for the subscriber to be stopped.
+        
+        If a call to this method is cancelled it must not stop the subscriber.
+        """
         ...
 
     async def __aiter__(self) -> AsyncIterable[str]:
