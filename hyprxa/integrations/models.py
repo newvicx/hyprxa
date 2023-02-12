@@ -110,10 +110,11 @@ class SubscriptionMessage(BaseModel):
         json_dumps=json_dumps
         json_loads=json_loads
 
-    def to_samples(self) -> "TimeseriesSamples":
+    def to_samples(self, source: str) -> "TimeseriesSamples":
         return TimeseriesSamples(
             subscription=hash(self.subscription),
-            items=self.items
+            items=self.items,
+            source=source
         )
 
 
@@ -121,13 +122,15 @@ class SubscriptionMessage(BaseModel):
 class TimeseriesSamples:
     subscription: int
     items: List[TimestampedValue]
+    source: str | None = None
 
     def __iter__(self) -> Iterable[TimeseriesDocument]:
         for item in self.items:
             yield TimeseriesDocument(
                 subscription=self.subscription,
                 timestamp=item.timestamp,
-                value=item.value
+                value=item.value,
+                source=self.source
             )
 
 

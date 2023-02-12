@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
@@ -10,4 +10,5 @@ class TimeseriesDocument:
     subscription: int
     timestamp: datetime
     value: Any
-    expire: datetime
+    expire: datetime = field(default_factory=datetime.utcnow)
+    source: str | None = None

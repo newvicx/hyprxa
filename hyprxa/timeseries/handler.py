@@ -32,7 +32,7 @@ class TimeseriesWorker(MongoWorker):
         flush_interval: int = 10,
         buffer_size: int = 200,
         max_retries: int = 3,
-        expire_after: int = 2_592_000, # 14 days
+        expire_after: int = 2_592_000, # 30 days
         **kwargs: Any
     ) -> None:
         super().__init__(
@@ -59,7 +59,11 @@ class TimeseriesWorker(MongoWorker):
         try:
             collection = Collection(db, self._collection_name)
             collection.create_index(
-                [("timestamp", pymongo.ASCENDING), ("subscription", pymongo.ASCENDING)],
+                [
+                    ("timestamp", pymongo.ASCENDING),
+                    ("subscription", pymongo.ASCENDING),
+                    ("source", pymongo.ASCENDING)
+                ],
                 unique=True
             )
             collection.create_index("expire", expireAfterSeconds=self._expire_after)
@@ -149,7 +153,7 @@ class MongoTimeseriesHandler:
         flush_interval: int = 10,
         buffer_size: int = 200,
         max_retries: int = 3,
-        expire_after: int = 1_209_600, # 14 days
+        expire_after: int = 2_592_000, # 30 days
         **kwargs: Any
     ) -> None:
         self._kwargs = {
