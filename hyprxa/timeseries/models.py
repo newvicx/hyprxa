@@ -6,7 +6,7 @@ from typing import Any
 
 @dataclass
 class TimeseriesDocument:
-    """Mongo document model for a timeseries sample."""
+    """MongoDB document model for a timeseries sample."""
     subscription: int
     timestamp: datetime
     value: Any
