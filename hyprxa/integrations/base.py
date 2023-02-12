@@ -65,7 +65,7 @@ class BaseClient(Client):
             active_connections=len(self._connections),
             active_subscriptions=len(self.subscriptions),
             subscription_capacity=self.capacity,
-            total_connections_serviced=self._connections_serviced,
+            total_connections_serviced=self.connections_serviced,
             connection_info=[connection.info for connection in self._connections.values()]
         )
 
@@ -111,6 +111,10 @@ class BaseClient(Client):
     async def unsubscribe(self, subscriptions: Set[Subscription]) -> bool:
         raise NotImplementedError()
 
+    def add_connection(self, fut: asyncio.Task, connection: Connection) -> None:
+        self._connections[fut] = connection
+        self._connections_serviced += 1
+
     def connection_lost(self, fut: asyncio.Future) -> None:
         assert fut in self._connections
         connection = self._connections.pop(fut)
@@ -139,7 +143,7 @@ class BaseConnection(Connection):
     """Base implementation for a connection."""
     def __init__(self) -> None:
         self._subscriptions: Set[Subscription] = set()
-        self._data: asyncio.Queue = None
+        self._data_queue: asyncio.Queue = None
         self._online: bool = False
         self._started: asyncio.Event = asyncio.Event()
         self._loop: asyncio.AbstractEventLoop = asyncio.get_event_loop()
@@ -169,13 +173,17 @@ class BaseConnection(Connection):
     def toggle(self) -> None:
         self._online = not self._online
 
+    async def publish(self, data: SubscriptionMessage) -> None:
+        await self._data_queue.put(data)
+        self._total_published += 1
+
     async def run(self, *args: Any, **kwargs: Any) -> None:
         raise NotImplementedError()
 
     async def start(
         self,
         subscriptions: Set[Subscription],
-        data: asyncio.Queue,
+        data_queue: asyncio.Queue,
         *args: Any,
         **kwargs: Any
     ) -> asyncio.Task:
@@ -186,7 +194,7 @@ class BaseSubscriber(Subscriber):
     """Base implementation for a subscriber."""
     def __init__(self) -> None:
         self._subscriptions = set()
-        self._data: Deque[str | bytes] = None
+        self._data: Deque[str] = None
         self._data_waiter: asyncio.Future = None
         self._stop_waiter: asyncio.Future = None
         self._loop: asyncio.AbstractEventLoop = asyncio.get_event_loop()
@@ -195,7 +203,7 @@ class BaseSubscriber(Subscriber):
         self._total_published = 0
 
     @property
-    def data(self) -> Deque[bytes]:
+    def data(self) -> Deque[str]:
         return self._data
 
     @property
@@ -226,9 +234,9 @@ class BaseSubscriber(Subscriber):
             else:
                 waiter.set_result(None)
 
-    def publish(self, data: str | bytes) -> None:
+    def publish(self, data: bytes) -> None:
         assert self._data is not None
-        self._data.append(data)
+        self._data.append(data.decode())
         
         waiter, self._data_waiter = self._data_waiter, None
         if waiter is not None and not waiter.done():
@@ -268,6 +276,11 @@ class BaseSubscriber(Subscriber):
         finally:
             waiter.cancel()
             self._data_waiter = None
+
+    async def wait_for_stop(self) -> None:
+        waiter = self._stop_waiter
+        if waiter is not None and not waiter.done():
+            await asyncio.shield(waiter)
 
     def __enter__(self) -> "Subscriber":
         return self
