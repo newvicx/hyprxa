@@ -1,4 +1,5 @@
 import asyncio
+import itertools
 import logging
 import random
 from collections.abc import Sequence
@@ -39,9 +40,36 @@ _LOGGER = logging.getLogger("hyprxa.integrations")
 class ClientManager:
     """Data integration manager backed by RabbitMQ.
 
-    A client manager has 2 primary functions...
-        1. Route messages from a client to subscribers.
-        2. Store messages from a client in a database.
+    A client manager has 3 primary functions...
+        1. Manage client subscriptions.
+        2. Route messages from a client to subscribers.
+        3. Store messages from a client in a database.
+
+    ## Subscription Management
+    The client manager uses a distributed locking backend to manage client
+    subscriptions. hyprxa currently supports Redis and Memcached for locking
+    backends. When the `subscribe` method is called, the manager will attempt to
+    lock all subscriptions requested to this process. For all locks that it acquires,
+    it will subscribe on the client. If a subscription lock is not acquired it
+    is because another client in the cluster is already subscribed to that
+    subscription. This allows hyprxa to scale without increasing demand on a data
+    source.
+
+    Subscription locks are periodically extended by the owning process to indicate
+    that process is still streaming that subscription. If a subscription is dropped
+    by the owning process' client, the lock will not be extended anymore. Another
+    manager in the cluster may attempt to acquire the subscription lock if a
+    subscriber in its pool requires it.
+
+    Managers will unsubscribe from a client subscription when there is no subscriber
+    in the cluster which requires that subscription.
+
+    If the locking backend has momentary interruptions, there is a chance that
+    two or more managers in the cluster could end up streaming the same subscription
+    on their client leading to duplicate data. Subscriber implementations must
+    guard against this. The simplest way to do this is to keep a reference to the
+    last timestamp for each subscription. The subscriber should only yield a message
+    if the timestamp for a message is greater than the last referenced timestamp.
 
     ## Message Routing
     Message routing is backed by RabbitMQ. When a managers `start` method is
@@ -65,7 +93,11 @@ class ClientManager:
     will continue to operate as usual and buffer messages on its data queue.
     These messages will be picked up by the manager and published on the broker.
     However, it is not guarenteed that any of these buffered messages make it
-    to the subscriber.
+    to the subscriber. The manager will wait for 2 seconds before starting to
+    publish messages again. This gives some time for subscribers to re-establish
+    their connection to the broker before the buffered messages are published.
+    If the subscribers do not re-establish their connection though, any messages
+    published will not reach the subscriber.
 
     ## Message Storage
     When a message is picked up by the manager from the client, it is buffered
@@ -107,7 +139,7 @@ class ClientManager:
         maxlen: int = 100,
         max_buffered_messages: int = 1000,
         subscription_timeout: float = 5,
-        reconnect_timeout: float = 30,
+        reconnect_timeout: float = 60,
         max_backoff: float = 3,
         initial_backoff: float = 1,
         max_failed: int = 15
@@ -129,7 +161,7 @@ class ClientManager:
         self._client: Client = None
         self._subscriber: Type[Subscriber] = None
         self._background: Set[asyncio.Task] = set()
-        self._subscribers: Dict[asyncio.Task, Subscriber] = {}
+        self._subscribers: Dict[asyncio.Future, Subscriber] = {}
         self._publishers: Dict[asyncio.Task, Subscriber] = {}
         self._ready: asyncio.Event = asyncio.Event()
         self._runner: asyncio.Task = None
@@ -180,6 +212,9 @@ class ClientManager:
             client: The client connecting to the data source.
             subscriber: The subscriber type receiving client messages.
         """
+        if not self.closed:
+            return
+
         self._source = source
         self._client = client
         self._subscriber = subscriber
@@ -190,13 +225,21 @@ class ClientManager:
 
     async def close(self) -> None:
         """Close the manager."""
-        for fut in self._subscribers.keys(): fut.cancel()
+        for fut in itertools.chain(
+            self._subscribers.keys(),
+            self._publishers.keys(),
+            self._background
+        ):
+            fut.cancel()
         runner, self._runner = self._runner, None
         if runner is not None:
             runner.cancel()
-        if not self._client.closed:
-            await self._client.close()
-            self._client.clear()
+        if self._client is not None and not self._client.closed:
+            try:
+                await self._client.close()
+            finally:
+                self._client.clear()
+                self._source, self._client, self._subscriber = None, None, None
 
     async def subscribe(
         self,
@@ -217,7 +260,7 @@ class ClientManager:
         if self.closed:
             raise ManagerClosed()
         if len(self._subscribers) >= self._max_subscribers:
-            raise SubscriptionLimitError(self._max_subscribers)
+            raise SubscriptionLimitError(f"Max subscriptions reached ({self._max_subscribers})")
         
         subscriptions = set(subscriptions)
 
@@ -254,6 +297,10 @@ class ClientManager:
                 await self._lock.release(to_subscribe)
                 await self.close()
                 raise ManagerClosed() from e
+            except Exception as e:
+                _LOGGER.warning("Error subscribing on client", exc_info=True)
+                await self._lock.release(to_subscribe)
+                raise ClientSubscriptionError("An error occurred while subscribing.") from e
 
             if not subscribed:
                 await self._lock.release(to_subscribe)
@@ -362,6 +409,7 @@ class ClientManager:
             async with anyio.create_task_group() as tg:
                 tg.start_soon(self._manage_subscriptions)
                 tg.start_soon(self._manage_broker_connection)
+                tg.start_soon(self._store_messages)
         except (Exception, anyio.ExceptionGroup):
             _LOGGER.error("Manager failed", exc_info=True)
             raise
@@ -384,14 +432,11 @@ class ClientManager:
                 
                 if attempts >= self._max_failed:
                     _LOGGER.error(
-                        "Dropping subscribers and client subscriptions due to "
+                        "Dropping %i subscribers and client subscriptions due to "
                         "repeated connection failures",
                         len(self._subscribers)
                     )
-                    if self.subscriptions:
-                        for fut in self._subscribers.keys():
-                            if not fut.done():
-                                fut.cancel()
+                    for fut in self._subscribers.keys(): fut.cancel()
                     
                     fut = self._loop.create_task(self._client.unsubscribe(self._client.subscriptions))
                     fut.add_done_callback(lambda _: self._client.clear())
@@ -409,7 +454,7 @@ class ClientManager:
             try:
                 async with anyio.create_task_group() as tg:
                     tg.start_soon(self._publish_messages, connection, self._exchange)
-                    await connection.closing
+                    await asyncio.shield(connection.closing)
             except ClientClosed:
                 self._ready.clear()
                 self._connection = None
@@ -462,9 +507,11 @@ class ClientManager:
         """Store messages in the timeseries database."""
         while True:
             msg = await self._storage_queue.get()
+            self._storage_queue.task_done()
             await anyio.to_thread.run_sync(
                 self._storage.publish,
-                msg.to_samples(self._source)
+                msg.to_samples(self._source),
+                cancellable=True
             )
 
     async def _manage_subscriptions(self) -> None:
@@ -539,10 +586,7 @@ class ClientManager:
                         await self._subscribe(not_subscribed)
                     except SubscriptionError:
                         for fut, subscriber in self._subscribers.items():
-                            if (
-                                not fut.done() and
-                                not_subscribed.difference(subscriber.subscriptions) != not_subscribed
-                            ):
+                            if not_subscribed.difference(subscriber.subscriptions) != not_subscribed:
                                 fut.cancel()
                                 _LOGGER.warning(
                                     "Subscriber dropped. Unable to pick up lost subscriptions",
