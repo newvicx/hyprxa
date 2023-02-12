@@ -47,4 +47,4 @@ class TimeseriesSettings(BaseSettings):
 
     class Config:
         env_file=".env"
-        env_prefix="cc_timeseries"
+        env_prefix="hyprxa_timeseries"
