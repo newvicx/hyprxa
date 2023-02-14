@@ -1,17 +1,19 @@
-import threading
-from collections.abc import Sequence
+from collections.abc import Iterable, MutableMapping, Sequence
 from enum import Enum
 from typing import Any, Dict, Tuple, Type
 
-from fastapi import Request
-from pydantic import create_model
+from fastapi import Request, WebSocket
+from pydantic import create_model, validator
 
 from hyprxa.auth import requires
 from hyprxa.base import BaseSubscriber, BaseSubscription
-from hyprxa.timeseries import BaseClient
-from hyprxa.timeseries import AnySourceSubscription as BaseAny
-from hyprxa.timeseries import AnySourceSubscriptionRequest as BaseAnyRequest
-from hyprxa.timeseries import BaseSourceSubscriptionRequest as BaseRequest 
+from hyprxa.timeseries import (
+    BaseClient,
+    AnySourceSubscription,
+    AnySourceSubscriptionRequest,
+    BaseSourceSubscriptionRequest,
+    UnitOp
+)
 
 
 
@@ -45,30 +47,49 @@ class Source:
         """Create a new client instance."""
         return self.client(*self.client_args, **self.client_kwargs), self.subscriber
     
-    def is_authorized(self, request: Request) -> None:
-        requires(
+    async def is_authorized(self, connection: Request | WebSocket) -> None:
+        await requires(
             scopes=self.scopes,
             any_=self.any,
             raise_on_no_scopes=self.raise_on_no_scopes
-        )(request=request)
+        )(connection=connection)
     
 
-class SourceCollection:
-    """Collection of available sources."""
+class SourceMapping(MutableMapping):
+    """Collection of available sources. Not thread safe."""
     def __init__(self) -> None:
         self._sources: Dict[str, Source] = {}
-        self._source_lock: threading.Lock = threading.Lock()
 
     def register(self, source: Source) -> None:
+        """Register a source for use with the timeseries manager."""
         if not isinstance(source, Source):
             raise TypeError(f"Expected 'Source' got {type(source)}")
-        with self._source_lock:
-            if source.source in self._sources:
-                raise ValueError(f"'{source.source}' is already registered.")
-            self._sources[source.source] = source
+        if source.source in self._sources:
+            raise ValueError(f"'{source.source}' is already registered.")
+        self._sources[source.source] = source
 
     def compile_sources(self) -> Enum:
-        return Enum("Sources", {k.upper(): k.lower() for k in self._sources.keys()})
+        """Generate an Enum of sources. Used for validation in API requests."""
+        return Enum(
+            "Sources",
+            {k.replace(" ", "_").upper(): k.replace(" ", "_").lower() for k in self._sources.keys()}
+        )
+
+    def __getitem__(self, __key: Any) -> Source:
+        return self._sources[__key]
+
+    def __setitem__(self, _: Any, source: Source) -> None:
+        self.register(source)
+
+    def __delitem__(self, __key: Any) -> None:
+        self._sources.__delitem__(__key)
+
+    def __iter__(self) -> Iterable[Source]:
+        for source in self._sources.values():
+            yield source
+
+    def __len__(self) -> int:
+        return len(self._sources)
     
 
 def add_source(
@@ -107,29 +128,41 @@ def add_source(
         client_args=client_args,
         client_kwargs=client_kwargs
     )
-    source_collection.register(s)
+    SOURCES.register(s)
 
 
-source_collection = SourceCollection()
+SOURCES = SourceMapping()
 
 
-BaseSourceSubscription = lambda: create_model(
+def source_to_str(cls, v: Enum) -> str:
+    """Convert source enum to string."""
+    return v.value
+
+
+ValidatedBaseSourceSubscription = lambda: create_model(
     "BaseSourceSubscription",
-    source=(source_collection.compile_sources(), ...),
-    __base__=BaseSubscription
+    source=(SOURCES.compile_sources(), ...),
+    __base__=BaseSubscription,
+    __validators__={"_source_converter": validator("source", allow_reuse=True)(source_to_str)}
 )
-AnySourceSubscription = lambda: create_model(
+ValidatedAnySourceSubscription = lambda: create_model(
     "AnySourceSubscription",
-    source=(source_collection.compile_sources(), ...),
-    __base__=BaseAny
+    source=(SOURCES.compile_sources(), ...),
+    __base__=AnySourceSubscription,
+    __validators__={"_source_converter": validator("source", allow_reuse=True)(source_to_str)}
 )
-BaseSourceSubscriptionRequest = lambda model: create_model(
+ValidatedBaseSourceSubscriptionRequest = lambda model: create_model(
     "BaseSourceSubscriptionRequest",
     subscriptions=(Sequence[model], ...),
-    __base__=BaseRequest
+    __base__=BaseSourceSubscriptionRequest
 )
-AnySourceSubscriptionRequest = lambda model: create_model(
+ValidatedAnySourceSubscriptionRequest = lambda model: create_model(
     "AnySourceSubscriptionRequest",
     subscriptions=(Sequence[model], ...),
-    __base__=BaseAnyRequest
+    __base__=AnySourceSubscriptionRequest
+)
+ValidatedUnitOp = lambda model: create_model(
+    "UnitOp",
+    data_mapping=(Dict[str, model], ...),
+    __base__=UnitOp
 )

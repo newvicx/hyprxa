@@ -12,11 +12,6 @@ from pymongo import MongoClient
 from pymongo.collection import Collection
 from pymongo.errors import BulkWriteError, OperationFailure
 
-from hyprxa.settings import (
-    mongo_settings,
-    timeseries_handler_settings,
-    timeseries_settings
-)
 from hyprxa.timeseries.models import TimeseriesDocument
 from hyprxa.util.mongo import MongoWorker
 
@@ -131,7 +126,8 @@ class MongoTimeseriesHandler:
     """
     worker: TimeseriesWorker = None
 
-    def __init__(self, **kwargs: Any) -> None:
+    def __init__(self, expire_after: int = 2_592_000, **kwargs: Any) -> None:
+        kwargs.update({"expire_after": expire_after})
         self.kwargs = kwargs
         self._lock = threading.Lock()
 
@@ -179,17 +175,3 @@ class MongoTimeseriesHandler:
             if self.worker is not None:
                 self.worker.flush()
                 self.worker.stop()
-
-    @classmethod
-    def from_settings(cls) -> "MongoTimeseriesHandler":
-        """Return a timeseries handler configured from the environment settings."""
-        return cls(
-            connection_uri=mongo_settings.connection_uri,
-            database_name=timeseries_settings.database_name,
-            collection_name=timeseries_settings.collection_name,
-            flush_interval=timeseries_handler_settings.flush_interval,
-            buffer_size=timeseries_handler_settings.buffer_size,
-            max_retries=timeseries_handler_settings.max_retries,
-            expire_after=timeseries_handler_settings.expire_after,
-            **mongo_settings.dict(exclude={"connection_uri"})
-        )

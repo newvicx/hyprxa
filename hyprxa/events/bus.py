@@ -10,12 +10,15 @@ from aiormq import Channel, Connection
 from pamqp import commands
 
 from hyprxa.base import BaseBroker, SubscriptionLimitError
-from hyprxa.caching import singleton
 from hyprxa.events.exceptions import EventBusClosed
 from hyprxa.events.handler import MongoEventHandler
-from hyprxa.events.models import Event, EventBusInfo, TopicSubscription
+from hyprxa.events.models import (
+    Event,
+    EventBusInfo,
+    EventDocument,
+    TopicSubscription
+)
 from hyprxa.events.subscriber import EventSubscriber
-from hyprxa.settings import event_bus_settings, rabbitmq_settings
 
 
 
@@ -33,13 +36,14 @@ class EventBus(BaseBroker):
         super().__init__(*args, **kwargs)
         self._storage = storage
         self._publish_queue: asyncio.PriorityQueue[Tuple[int, Event]] = asyncio.PriorityQueue(maxsize=max_buffered_events)
-        self._storage_queue: asyncio.Queue[Event] = asyncio.Queue(maxsize=max_buffered_events)
+        self._storage_queue: asyncio.Queue[EventDocument] = asyncio.Queue(maxsize=max_buffered_events)
 
         self._total_published = 0
         self._total_stored = 0
 
     @property
     def info(self) -> EventBusInfo:
+        storage_info = self._storage.worker.info if self._storage.worker else {}
         return EventBusInfo(
             name=self.__class__.__name__,
             closed=self.closed,
@@ -54,28 +58,9 @@ class EventBus(BaseBroker):
             publish_buffer_size=self._publish_queue.qsize(),
             storage_buffer_size=self._storage_queue.qsize(),
             total_published_events=self._total_published,
-            total_stored_events=self._total_stored
+            total_stored_events=self._total_stored,
+            storage_info=storage_info
         )
-
-    @classmethod
-    @singleton
-    def from_settings(cls) -> "EventBus":
-        storage = MongoEventHandler.from_settings()
-        factory = rabbitmq_settings.get_factory()
-        bus = cls(
-            storage=storage,
-            factory=factory,
-            exchange=event_bus_settings.exchange,
-            max_buffered_events=event_bus_settings.max_buffered_events,
-            max_subscribers=event_bus_settings.max_subscribers,
-            maxlen=event_bus_settings.maxlen,
-            subscription_timeout=event_bus_settings.subscription_timeout,
-            reconnect_timeout=event_bus_settings.reconnect_timeout,
-            max_backoff=event_bus_settings.max_backoff,
-            initial_backoff=event_bus_settings.initial_backoff
-        )
-        bus.start()
-        return bus
 
     def close(self) -> None:
         """Close the event bus."""
@@ -111,7 +96,7 @@ class EventBus(BaseBroker):
         if self._publish_queue.full() or self._storage_queue.full():
             return False
         self._publish_queue.put_nowait((1, event))
-        self._storage_queue.put_nowait(event)
+        self._storage_queue.put_nowait(event.to_document())
 
     async def subscribe(self, subscriptions: Sequence[TopicSubscription]) -> EventSubscriber:
         if self.closed:
@@ -247,11 +232,11 @@ class EventBus(BaseBroker):
     async def _store_events(self) -> None:
         """Store events in the event database."""
         while True:
-            msg = await self._storage_queue.get()
+            event = await self._storage_queue.get()
             self._storage_queue.task_done()
             await anyio.to_thread.run_sync(
                 self._storage.publish,
-                msg.to_document(),
+                event,
                 cancellable=True
             )
             self._total_stored += 1

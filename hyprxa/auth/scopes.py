@@ -1,6 +1,6 @@
 from collections.abc import Collection
 
-from fastapi import HTTPException, status
+from fastapi import HTTPException, WebSocket, status
 from fastapi.requests import Request
 from starlette.authentication import AuthCredentials
 from starlette.types import Scope
@@ -89,8 +89,8 @@ class requires:
         self.any = any_
         self.raise_on_no_scopes = raise_on_no_scopes
 
-    async def __call__(self, request: Request) -> BaseUser:
-        scope: Scope = request.scope
+    async def __call__(self, connection: Request | WebSocket) -> BaseUser:
+        scope: Scope = connection.scope
         
         if scope["type"] not in ("http", "websocket"):
             raise RuntimeError("'requires' used outside of 'http', 'websocket' scope.")

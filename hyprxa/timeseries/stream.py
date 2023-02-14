@@ -44,7 +44,7 @@ async def get_timeseries(
         database_name: The database to query.
         collection_name: The collection to query.
         start_time: Start time of query. This is inclusive.
-        end_time: End time of query.
+        end_time: End time of query. This is inclusive.
         scan_rate: A representative number of the data update frequency.
 
     Yields:
@@ -54,7 +54,7 @@ async def get_timeseries(
         ValueError: If 'start_time' >= 'end_time'.
         PyMongoError: Error in motor client.
     """
-    end_time = end_time or datetime.now()
+    end_time = end_time or datetime.utcnow()
     if start_time >= end_time:
         raise ValueError("'start_time' cannot be greater than or equal to 'end_time'")
 

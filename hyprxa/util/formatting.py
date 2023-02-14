@@ -1,6 +1,9 @@
 import re
 from typing import List
 
+from flatten_dict import flatten
+
+from hyprxa.events import EventDocument
 from hyprxa.types import JSONPrimitive, TimeseriesRow
 
 
@@ -33,7 +36,22 @@ def format_timeseries_rows(row: TimeseriesRow) -> List[JSONPrimitive]:
     return [row[0].isoformat(), *row[1]]
 
 
-def format_docstrings(description: str) -> str:
+def format_event_document(event: EventDocument) -> List[JSONPrimitive]:
+    """Format an event document as an iterable. The keys of the payload are
+    flattened to produce a row structure.
+    """
+    payload = event.payload
+    flattened = flatten(payload, reducer="dot")
+    sorted_keys = sorted(flattened.keys())
+    return [
+        event.timestamp.isoformat(),
+        event.posted_by,
+        event.topic,
+        event.routing_key,
+        *[flattened[k] for k in sorted_keys]
+    ]
+
+def format_docstring(description: str) -> str:
     """Takes a docstring formatted string and converts it to a string with no
     line breaks or extra spaces.
     """

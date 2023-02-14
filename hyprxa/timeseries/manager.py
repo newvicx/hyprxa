@@ -15,8 +15,6 @@ from hyprxa.base import (
     BaseSubscriber,
     SubscriptionLimitError
 )
-from hyprxa.caching import singleton
-from hyprxa.settings import rabbitmq_settings, timeseries_manager_settings
 from hyprxa.sources import Source
 from hyprxa.timeseries.base import BaseClient
 from hyprxa.timeseries.exceptions import (
@@ -36,7 +34,7 @@ from hyprxa.timeseries.models import (
 
 
 
-_LOGGER = logging.getLogger("hyprxa.integrations")
+_LOGGER = logging.getLogger("hyprxa.timeseries")
 
 
 class TimeseriesManager(BaseBroker):
@@ -65,6 +63,7 @@ class TimeseriesManager(BaseBroker):
 
     @property
     def info(self) -> ManagerInfo:
+        storage_info = self._storage.worker.info if self._storage.worker else {}
         return ManagerInfo(
             name=self.__class__.__name__,
             closed=self.closed,
@@ -79,32 +78,9 @@ class TimeseriesManager(BaseBroker):
             client_info=self._client.info,
             lock_info=self._lock.info,
             total_published_messages=self._total_published,
-            total_stored_messages=self._total_stored
+            total_stored_messages=self._total_stored,
+            storage_info=storage_info
         )
-
-    @classmethod
-    @singleton
-    def from_environment(cls, source: Source) -> "TimeseriesManager":
-        storage = MongoTimeseriesHandler.from_settings()
-        lock = SubscriptionLock.from_settings()
-        factory = rabbitmq_settings.get_factory()
-        manager = cls(
-            source=source,
-            lock=lock,
-            storage=storage,
-            factory=factory,
-            exchange=timeseries_manager_settings.exchange,
-            max_buffered_messages=timeseries_manager_settings.max_buffered_messages,
-            max_subscribers=timeseries_manager_settings.max_subscribers,
-            maxlen=timeseries_manager_settings.maxlen,
-            subscription_timeout=timeseries_manager_settings.subscription_timeout,
-            reconnect_timeout=timeseries_manager_settings.reconnect_timeout,
-            max_backoff=timeseries_manager_settings.max_backoff,
-            initial_backoff=timeseries_manager_settings.initial_backoff,
-            max_failed=timeseries_manager_settings.max_failed
-        )
-        manager.start()
-        return manager
         
     def start(self) -> None:
         self._client, self._subscriber = self._source()
@@ -144,23 +120,6 @@ class TimeseriesManager(BaseBroker):
         self.connect_subscriber(subscriber=subscriber, connection=connection)
 
         return subscriber
-    
-    async def bind_subscriber(
-        self,
-        subscriber: BaseSubscriber,
-        channel: Channel,
-        declare_ok: commands.Queue.DeclareOk,
-    ) -> None:
-        source = self._source.source
-        binds = [
-            channel.queue_bind(
-                declare_ok.queue,
-                exchange=self.exchange,
-                routing_key=f"{source}-{hash(subscription)}"
-            )
-            for subscription in subscriber.subscriptions
-        ]
-        await asyncio.gather(*binds)
 
     async def _subscribe(self, subscriptions: Set[BaseSourceSubscription]) -> None:
         """Acquire locks for subscriptions and subscribe on the client."""
@@ -186,6 +145,23 @@ class TimeseriesManager(BaseBroker):
             if not subscribed:
                 await self._lock.release(to_subscribe)
                 raise ClientSubscriptionError("Client refused subscriptions.")
+    
+    async def bind_subscriber(
+        self,
+        subscriber: BaseSubscriber,
+        channel: Channel,
+        declare_ok: commands.Queue.DeclareOk,
+    ) -> None:
+        source = self._source.source
+        binds = [
+            channel.queue_bind(
+                declare_ok.queue,
+                exchange=self.exchange,
+                routing_key=f"{source}-{hash(subscription)}"
+            )
+            for subscription in subscriber.subscriptions
+        ]
+        await asyncio.gather(*binds)
             
     async def run(self) -> None:
         """Manage background tasks for manager."""
@@ -324,7 +300,7 @@ class TimeseriesManager(BaseBroker):
 
     async def _get_dropped_subscriptions(self) -> None:
         """Retrieve dropped subscriptions and release client locks."""
-        async for msg in self._client.dropped():
+        async for msg in self._client.get_dropped():
             subscriptions = msg.subscriptions
             if subscriptions:
                 if msg.error:

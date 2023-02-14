@@ -10,6 +10,7 @@ from jsonschema.validators import validator_for
 from pydantic import Field, root_validator, validator
 
 from hyprxa.base import BaseSubscription, BaseSubscriptionRequest, BrokerInfo
+from hyprxa.context import get_username
 from hyprxa.util.models import BaseModel
 
 
@@ -43,9 +44,21 @@ class Topic(BaseModel):
         return schema
 
 
+@dataclass
+class TopicDocument:
+    """MongoDB document model for a topic."""
+    topic: str
+    schema: Dict[str, Any]
+    modified_by: str | None
+    modified_at: datetime
+
+
+ValidatedTopicDocument = pydantic.dataclasses.dataclass(TopicDocument)
+
+
 class TopicQueryResult(BaseModel):
     """Result set of topic query."""
-    items: List[str | None]
+    items: List[str | None] = field(default_factory=list)
 
 
 class TopicSubscription(BaseSubscription):
@@ -70,6 +83,7 @@ class EventDocument:
     routing_key: str
     payload: Dict[str, Any]
     timestamp: datetime = field(default_factory=datetime.utcnow)
+    posted_by: str | None = field(default_factory=get_username)
 
     def __gt__(self, __o: object) -> bool:
         if not isinstance(__o, EventDocument):
@@ -96,7 +110,6 @@ class Event(BaseModel):
     topic: str
     routing_key: str | None
     payload: Dict[str, Any]
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
 
     @root_validator
     def _set_routing_key(cls, v: Dict[str, str | None]) -> Dict[str, str]:
@@ -115,7 +128,7 @@ class Event(BaseModel):
 
 class EventQueryResult(BaseModel):
     """Result set of an event query."""
-    items: List[ValidatedEventDocument]
+    items: List[EventDocument]
 
 
 class EventBusInfo(BrokerInfo):
@@ -124,3 +137,4 @@ class EventBusInfo(BrokerInfo):
     storage_buffer_size: int
     total_published_events: int
     total_stored_events: int
+    storage_info: Dict[str, Any]

@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List, Sequence, Set
 
+import pydantic
 from pydantic import Field, validator
 
 from hyprxa.base import BaseSubscription, BrokerInfo
@@ -47,7 +48,7 @@ class BaseSourceSubscriptionRequest(BaseModel):
 
 class TimestampedValue(BaseModel):
     """Base model for any value with a timestamp."""
-    timestamp: datetime = Field(default_factory=datetime.now)
+    timestamp: datetime
     value: Any
 
 
@@ -60,8 +61,9 @@ class TimeseriesDocument:
     value: Any
     expire: datetime = field(default_factory=datetime.utcnow)
 
+
 @dataclass
-class TimeseriesSamples:
+class TimeseriesSamples(Iterable[TimeseriesDocument]):
     source: str
     subscription: int
     items: List[TimestampedValue]
@@ -115,6 +117,31 @@ class AnySourceSubscriptionRequest(BaseSourceSubscriptionRequest):
         return groups
 
 
+class UnitOp(BaseModel):
+    """Model for a unit-op. A unit-op is a logical grouping of timeseries subscriptions.
+    """
+    name: str
+    data_mapping: Dict[str, AnySourceSubscription]
+    meta: Dict[str, Any]
+
+
+@dataclass
+class UnitOpDocument:
+    """Document model for a UnitOp."""
+    name: str
+    data_mapping: Dict[str, AnySourceSubscription]
+    meta: Dict[str, Any]
+    modified_by: str
+    modified_at: datetime
+
+
+ValidatedUnitOpDocument = pydantic.dataclasses.dataclass(UnitOpDocument)
+
+class UnitOpQueryResult(BaseModel):
+    """Result set of unit-op query."""
+    items: List[UnitOpDocument | None] = Field(default_factory=list)
+
+
 class ConnectionInfo(BaseModel):
     """Model for connection statistics."""
     name: str
@@ -154,3 +181,4 @@ class ManagerInfo(BrokerInfo):
     lock_info: LockInfo
     total_published_messages: int
     total_stored_messages: int
+    storage_info: Dict[str, Any]

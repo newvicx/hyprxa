@@ -20,7 +20,7 @@ from hyprxa.util.defaults import DEFAULT_DATABASE
 
 
 
-_LOGGER = logging.getLogger("hyprxa.util.db")
+_LOGGER = logging.getLogger("hyprxa.util")
 
 
 class ServerUnavailable(PyMongoError):
@@ -35,7 +35,7 @@ class MongoWorker:
         database_name: str | None = None,
         collection_name: str | None = None,
         flush_interval: int = 10,
-        buffer_size: int = 200,
+        buffer_size: int = 100,
         max_retries: int = 3,
         **kwargs: Any
     ) -> None:
@@ -72,6 +72,8 @@ class MongoWorker:
     def info(self) -> Dict[str, Any]:
         """Returns debugging information with worker sample stats."""
         return {
+            "running": self.is_running,
+            "stopped": self.is_stopped,
             "queue_length": self._queue.qsize(),
             "pending_batch_length": len(self._pending_documents),
             "pending_batch_size": self._pending_size
@@ -221,8 +223,8 @@ class SessionManager:
                     client = self._factory()
                     self._client = client
                 
-                ok = await self._client.admin.command("ping")
-                if not ok.get("ok"):
+                pong = await self._client.admin.command("ping")
+                if not pong.get("ok"):
                     raise ServerUnavailable("Unable to ping server.")
                 
                 yield self._client

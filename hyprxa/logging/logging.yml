@@ -1,0 +1,76 @@
+# hyprxa logging config file
+
+# You can provide your own config file by overriding the the LOGGING_CONFIG_PATH
+# env variable
+
+version: 1
+disable_existing_loggers: False
+
+formatters:
+    simple:
+        format: "%(asctime)s.%(msecs)03d | %(message)s"
+        datefmt: "%H:%M:%S"
+
+    standard:
+        (): hyprxa.logging.StandardFormatter
+
+
+filters:
+    correlation_id:
+        (): asgi_correlation_id.CorrelationIdFilter
+        uuid_length: 32
+    ip_address:
+        (): hyprxa.logging.IPAddressFilter
+    username:
+        (): hyprxa.logging.UserFilter
+    host:
+        (): hyprxa.logging.HostFilter
+
+handlers:
+    
+    console:
+        class: logging.StreamHandler
+        formatter: simple
+
+    rotate:
+        class: logging.handlers.TimedRotatingFileHandler
+        filename: hyprxa.log
+        when: midnight
+        backupCount: 14
+        formatter: standard
+        filters: [correlation_id, ip_address, username, host]
+
+loggers:
+    hyprxa.auth:
+        level: WARNING
+    
+    hyprxa.base:
+        level: WARNING
+
+    hyprxa.caching:
+        level: WARNING
+
+    hyprxa.events:
+        level: INFO
+
+    hyprxa.timeseries:
+        level: INFO
+
+    hyprxa.util:
+        level: WARNING
+
+    hyprxa.exceptions:
+        level: ERROR
+
+    uvicorn:
+        level: INFO
+        handlers: [console]
+
+    fastapi:
+        level: INFO
+        handlers: [console]
+
+# The root logger: any logger without propagation disabled sends to here as well
+root:
+    level: WARNING
+    handlers: [rotate]

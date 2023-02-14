@@ -10,11 +10,6 @@ from pymongo import MongoClient
 from pymongo.collection import Collection
 
 from hyprxa.events.models import EventDocument
-from hyprxa.settings import (
-    event_handler_settings,
-    event_settings,
-    mongo_settings
-)
 from hyprxa.util.mongo import MongoWorker
 
 
@@ -71,8 +66,7 @@ class EventWorker(MongoWorker):
                             "$setOnInsert": {
                                 "_id": f"{document.topic}_{int(document.timestamp.timestamp()*1_000_000)}",
                                 "timestamp": document.timestamp,
-                                "topic": document.topic,
-                                "count": 1
+                                "topic": document.topic
                             }
                         },
                         upsert=True
@@ -166,16 +160,3 @@ class MongoEventHandler:
             if self.worker is not None:
                 self.worker.flush(block=True)
                 self.worker.stop()
-
-    @classmethod
-    def from_settings(cls) -> "MongoEventHandler":
-        """Return an event handler configured from the environment settings."""
-        return cls(
-            connection_uri=mongo_settings.connection_uri,
-            database_name=event_settings.database_name,
-            collection_name=event_settings.collection_name,
-            flush_interval=event_handler_settings.flush_interval,
-            buffer_size=event_handler_settings.buffer_size,
-            max_retries=event_handler_settings.max_retries,
-            **mongo_settings.dict(exclude={"connection_uri"})
-        )
