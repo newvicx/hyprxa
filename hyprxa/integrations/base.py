@@ -21,7 +21,6 @@ from hyprxa.integrations.models import (
 from hyprxa.integrations.protocols import (
     Client,
     Connection,
-    Lock,
     Subscriber
 )
 
@@ -297,7 +296,7 @@ class BaseSubscriber(Subscriber):
             self.stop(None)
 
 
-class BaseLock(Lock):
+class BaseLock:
     """Base implementation for a lock."""
 
     def subscriber_key(self, subscription: Subscription) -> str:

@@ -4,10 +4,7 @@ import uuid
 from datetime import datetime
 from typing import List, Set
 
-try:
-    from redis.asyncio import Redis
-except ImportError:
-    pass
+from redis.asyncio import Redis
 
 from hyprxa.caching import memo
 from hyprxa.integrations.base import BaseLock
@@ -61,7 +58,7 @@ class RedisLock(BaseLock):
         redis: The redis client.
         ttl: The time in milliseconds to acquire and extend locks for.
     """
-    def __init__(self, redis: "Redis", ttl: int = 5000) -> None:
+    def __init__(self, redis: Redis, ttl: int = 5000) -> None:
         self._redis = redis
         self._ttl = ttl
         self._id = uuid.uuid4().hex

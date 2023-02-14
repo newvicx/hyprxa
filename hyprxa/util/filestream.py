@@ -88,7 +88,7 @@ async def chunked_transfer(
         chunk_size: The max number of iterations before a flush is triggered.
 
     Raises:
-        Exception: Any exception raise by the iterator, writer, or formatter.
+        Exception: Any exception raised by the iterator, writer, or formatter.
     """
     count = 0
     try:

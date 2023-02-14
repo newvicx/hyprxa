@@ -60,13 +60,29 @@ class TopicSubscriptionRequest(SubscriptionRequest):
     subscriptions: Sequence[TopicSubscription]
 
 
-@dataclass
+@dataclass(frozen=True)
 class EventDocument:
     """MongoDB document model for an event."""
     topic: str
     routing_key: str
     payload: Dict[str, Any]
     timestamp: datetime = field(default_factory=datetime.utcnow)
+
+    def __gt__(self, __o: object) -> bool:
+        if not isinstance(__o, EventDocument):
+            raise TypeError(f"'>' not supported between instances of {type(self)} and {type(__o)}.")
+        try:
+            return self.timestamp > __o.timestamp
+        except TypeError:
+            return False
+    
+    def __lt__(self, __o: object) -> bool:
+        if not isinstance(__o, EventDocument):
+            raise TypeError(f"'<' not supported between instances of {type(self)} and {type(__o)}.")
+        try:
+            return self.timestamp < __o.timestamp
+        except TypeError:
+            return False
 
 
 class Event(BaseModel):

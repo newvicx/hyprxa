@@ -3,13 +3,12 @@ from collections.abc import AsyncIterable
 from types import TracebackType
 from typing import Any, Deque, Protocol, Set, Type
 
-from hyprxa.integrations.models import (
+from hyprxa.timeseries.models import (
     ClientInfo,
     ConnectionInfo,
     DroppedSubscriptions,
     SubscriberCodes,
     SubscriberInfo,
-    Subscription,
     SubscriptionMessage
 )
 

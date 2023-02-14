@@ -31,7 +31,7 @@ from .models import (
 )
 from .protocols import Client, Connection, Subscriber
 from .settings import ManagerSettings
-from .util import iter_subscriber, iter_subscribers
+from .stream import iter_subscriber, iter_subscribers
 
 
 

@@ -12,6 +12,11 @@ from pymongo import MongoClient
 from pymongo.collection import Collection
 from pymongo.errors import BulkWriteError, OperationFailure
 
+from hyprxa.settings import (
+    mongo_settings,
+    timeseries_handler_settings,
+    timeseries_settings
+)
 from hyprxa.timeseries.models import TimeseriesDocument
 from hyprxa.util.mongo import MongoWorker
 
@@ -122,35 +127,17 @@ class MongoTimeseriesHandler:
         max_retries: The maximum number of attempts to make sending a batch of
             samples before giving up on the batch.
         expire_after: The value of the TTL index for samples.
+        **kwargs: Additional kwargs for `MongoClient`.
     """
     worker: TimeseriesWorker = None
 
-    def __init__(
-        self,
-        connection_url: str = "mongodb://localhost:27017",
-        database_name: str | None = None,
-        collection_name: str | None = None,
-        flush_interval: int = 10,
-        buffer_size: int = 200,
-        max_retries: int = 3,
-        expire_after: int = 2_592_000, # 30 days
-        **kwargs: Any
-    ) -> None:
-        self._kwargs = {
-            "connection_url": connection_url,
-            "database_name": database_name,
-            "collection_name": collection_name,
-            "flush_interval": flush_interval,
-            "buffer_size": buffer_size,
-            "max_retries": max_retries,
-            "expire_after": expire_after
-        }
-        self._kwargs.update(kwargs)
+    def __init__(self, **kwargs: Any) -> None:
+        self.kwargs = kwargs
         self._lock = threading.Lock()
 
     def start_worker(self) -> TimeseriesWorker:
         """Start the timeseries worker thread."""
-        worker = TimeseriesWorker(**self._kwargs)
+        worker = TimeseriesWorker(**self.kwargs)
         worker.start()
         worker.wait()
         return worker
@@ -192,3 +179,17 @@ class MongoTimeseriesHandler:
             if self.worker is not None:
                 self.worker.flush()
                 self.worker.stop()
+
+    @classmethod
+    def from_settings(cls) -> "MongoTimeseriesHandler":
+        """Return a timeseries handler configured from the environment settings."""
+        return cls(
+            connection_uri=mongo_settings.connection_uri,
+            database_name=timeseries_settings.database_name,
+            collection_name=timeseries_settings.collection_name,
+            flush_interval=timeseries_handler_settings.flush_interval,
+            buffer_size=timeseries_handler_settings.buffer_size,
+            max_retries=timeseries_handler_settings.max_retries,
+            expire_after=timeseries_handler_settings.expire_after,
+            **mongo_settings.dict(exclude={"connection_uri"})
+        )

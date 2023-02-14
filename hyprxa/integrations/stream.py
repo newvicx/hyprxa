@@ -9,7 +9,7 @@ from hyprxa.integrations.protocols import Subscriber
 
 
 async def iter_subscriber(subscriber: Subscriber) -> AsyncIterable[str]:
-    """Iterates over a subscriber yielding events."""
+    """Iterates over a subscriber yielding messages."""
     with subscriber:
         async for data in subscriber:
             yield data

@@ -5,10 +5,7 @@ from datetime import datetime
 from typing import List, Set
 
 import anyio
-try:
-    from pymemcache import PooledClient as Memcached
-except ImportError:
-    pass
+from pymemcache import PooledClient as Memcached
 
 from hyprxa.integrations.base import BaseLock
 from hyprxa.integrations.models import LockInfo, Subscription
@@ -60,7 +57,7 @@ class MemcachedLock(BaseLock):
         ttl: The time in milliseconds to acquire and extend locks for.
         max_workers: The maximum number of threads that can execute memcached commands.
     """
-    def __init__(self, memcached: "Memcached", ttl: int = 5000, max_workers: int = 4) -> None:
+    def __init__(self, memcached: Memcached, ttl: int = 5000, max_workers: int = 4) -> None:
         self._memcached = memcached
         self._ttl = int(ttl/1000)
         self._id = uuid.uuid4().hex

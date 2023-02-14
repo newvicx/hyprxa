@@ -31,7 +31,7 @@ class MongoWorker:
     """Manages the submission of documents to MongoDB in a background thread."""
     def __init__(
         self,
-        connection_url: str = "mongodb://localhost:27017",
+        connection_uri: str = "mongodb://localhost:27017",
         database_name: str | None = None,
         collection_name: str | None = None,
         flush_interval: int = 10,
@@ -41,7 +41,7 @@ class MongoWorker:
     ) -> None:
         kwargs.pop("maxPoolSize", None)
 
-        self._connection_url = connection_url
+        self._connection_uri = connection_uri
         self._database_name = database_name or DEFAULT_DATABASE
         self._collection_name = collection_name or self.default_collection_name()
         self._flush_interval = flush_interval
@@ -148,7 +148,7 @@ class MongoWorker:
     def _run(self):
         try:
             with MongoClient(
-                self._connection_url,
+                self._connection_uri,
                 maxPoolSize=1,
                 **self._connection_args
             ) as client:

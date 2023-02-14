@@ -10,6 +10,11 @@ from pymongo import MongoClient
 from pymongo.collection import Collection
 
 from hyprxa.events.models import EventDocument
+from hyprxa.settings import (
+    event_handler_settings,
+    event_settings,
+    mongo_settings
+)
 from hyprxa.util.mongo import MongoWorker
 
 
@@ -100,10 +105,10 @@ class EventWorker(MongoWorker):
 
 
 class MongoEventHandler:
-    """A handler that sends events to MongoDB.
+    """A storage handler that sends events to MongoDB.
 
     Args:
-        connection_url: Mongo DSN connection url.
+        connection_uri: Mongo DSN connection url.
         database_name: The database to save events to.
         collection_name: The collection name to save events to.
         flush_interval: The time (in seconds) between flushes on the worker.
@@ -111,33 +116,17 @@ class MongoEventHandler:
             is done to the database.
         max_retries: The maximum number of attempts to make sending a batch of
             events before giving up on the batch.
+        **kwargs: Additional kwargs for `MongoClient`.
     """
     worker: EventWorker = None
 
-    def __init__(
-        self,
-        connection_url: str = "mongodb://localhost:27017",
-        database_name: str | None = None,
-        collection_name: str | None = None,
-        flush_interval: int = 10,
-        buffer_size: int = 200,
-        max_retries: int = 3,
-        **kwargs: Any
-    ) -> None:
-        self._kwargs = {
-            "connection_url": connection_url,
-            "database_name": database_name,
-            "collection_name": collection_name,
-            "flush_interval": flush_interval,
-            "buffer_size": buffer_size,
-            "max_retries": max_retries
-        }
-        self._kwargs.update(kwargs)
+    def __init__(self, **kwargs: Any) -> None:
+        self.kwargs = kwargs
         self._lock = threading.Lock()
 
     def start_worker(self) -> EventWorker:
         """Start the event worker thread."""
-        worker = EventWorker(**self._kwargs)
+        worker = EventWorker(**self.kwargs)
         worker.start()
         worker.wait()
         return worker
@@ -175,5 +164,18 @@ class MongoEventHandler:
         """Shuts down this handler and the flushes the worker."""
         with self._lock:
             if self.worker is not None:
-                self.worker.flush()
+                self.worker.flush(block=True)
                 self.worker.stop()
+
+    @classmethod
+    def from_settings(cls) -> "MongoEventHandler":
+        """Return an event handler configured from the environment settings."""
+        return cls(
+            connection_uri=mongo_settings.connection_uri,
+            database_name=event_settings.database_name,
+            collection_name=event_settings.collection_name,
+            flush_interval=event_handler_settings.flush_interval,
+            buffer_size=event_handler_settings.buffer_size,
+            max_retries=event_handler_settings.max_retries,
+            **mongo_settings.dict(exclude={"connection_uri"})
+        )
