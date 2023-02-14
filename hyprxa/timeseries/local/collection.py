@@ -5,9 +5,9 @@ from collections.abc import Generator, Iterable, Sequence
 from datetime import datetime
 from typing import Any, Dict, List, Set, Tuple, cast
 
-from hyprxa.integrations import Subscription
 from hyprxa.timeseries.local.chunks import Chunk, TimeChunk
 from hyprxa.timeseries.local.timeseries import Timeseries
+from hyprxa.timeseries.models import BaseSourceSubscription
 from hyprxa.types import TimeseriesRow
 
 
@@ -29,12 +29,12 @@ class TimeseriesCollection:
         self._series: Dict[int, Timeseries] = {}
         self._lock: threading.Lock = threading.Lock()
 
-    def __getitem__(self, index: Subscription) -> Timeseries:
+    def __getitem__(self, index: BaseSourceSubscription) -> Timeseries:
         return self._series[hash(index)]
 
     def create(
         self,
-        subscription: Subscription,
+        subscription: BaseSourceSubscription,
         samples: Iterable[Tuple[datetime, Any]] = None,
         retention: int = 7200,
         chunk_size: int = 100,
@@ -75,7 +75,7 @@ class TimeseriesCollection:
 
     def filter_by_subscription(
         self,
-        subscriptions: Sequence[Subscription]
+        subscriptions: Sequence[BaseSourceSubscription]
     ) -> "TimeseriesCollectionView":
         """Query a subset of the collection by label and return a `TimeseriesCollectionView`.
         
@@ -85,7 +85,7 @@ class TimeseriesCollection:
         Returns:
             view: `TimeseriesCollectionView`
         """
-        subscriptions: Set[Subscription] = set(subscriptions)
+        subscriptions: Set[BaseSourceSubscription] = set(subscriptions)
 
         def _filter() -> Iterable[Timeseries]:
             with self._lock:
@@ -138,7 +138,7 @@ class TimeseriesCollectionView(Iterable[TimeseriesRow]):
 
     def filter_by_subscription(
         self,
-        subscriptions: Sequence[Subscription]
+        subscriptions: Sequence[BaseSourceSubscription]
     ) -> "TimeseriesCollectionView":
         """Query a subset of the collection by label and return a `TimeseriesCollectionView`.
         
@@ -148,7 +148,7 @@ class TimeseriesCollectionView(Iterable[TimeseriesRow]):
         Returns:
             view: A `TimeseriesCollectionView`.
         """
-        subscriptions: Set[Subscription] = set(subscriptions)
+        subscriptions: Set[BaseSourceSubscription] = set(subscriptions)
 
         def _filter() -> Iterable[Timeseries]:
             for series in self._series:

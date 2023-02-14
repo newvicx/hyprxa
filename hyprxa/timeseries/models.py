@@ -1,23 +1,19 @@
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import Enum, IntEnum
 from typing import Any, Dict, List, Sequence, Set
 
-from pydantic import BaseModel, Field, validator
+from pydantic import Field, validator
 
-from hyprxa.models import BaseSubscription
-from hyprxa.settings import timeseries_settings
-from hyprxa.timeseries import TimeseriesDocument
-from hyprxa.util.json import json_dumps, json_loads
+from hyprxa.base import BaseSubscription, BrokerInfo
+from hyprxa.util.models import BaseModel
 
 
-
-Sources = timeseries_settings.get_sources()
 
 class BaseSourceSubscription(BaseSubscription):
     """Base model for timeseries subscriptions."""
-    source: Sources
+    source: str
+
 
 class DroppedSubscriptions(BaseModel):
     """Message for dropped subscriptions from a client to a manager."""
@@ -55,7 +51,7 @@ class TimestampedValue(BaseModel):
     value: Any
 
 
-@dataclass(frozen=True)
+@dataclass
 class TimeseriesDocument:
     """MongoDB document model for a timeseries sample."""
     source: str
@@ -88,10 +84,6 @@ class SubscriptionMessage(BaseModel):
     subscription: BaseSourceSubscription
     items: List[TimestampedValue]
 
-    class Config:
-        json_dumps=json_dumps
-        json_loads=json_loads
-
     def to_samples(self, source: str) -> TimeseriesSamples:
         return TimeseriesSamples(
             subscription=hash(self.subscription),
@@ -123,18 +115,6 @@ class AnySourceSubscriptionRequest(BaseSourceSubscriptionRequest):
         return groups
 
 
-class SubscriberCodes(IntEnum):
-    """Codes returned from a `wait` on a subscriber."""
-    STOPPED = 1
-    DATA = 2
-
-
-class BrokerStatus(str, Enum):
-    """Status of RabbitMQ broker connection."""
-    CONNECTED = "connected"
-    DISCONNECTED = "disconnected"
-
-
 class ConnectionInfo(BaseModel):
     """Model for connection statistics."""
     name: str
@@ -148,6 +128,7 @@ class ConnectionInfo(BaseModel):
 class ClientInfo(BaseModel):
     """Model for client statistics."""
     name: str
+    source: str
     closed: bool
     data_queue_size: int
     dropped_connection_queue_size: int
@@ -163,6 +144,13 @@ class ClientInfo(BaseModel):
 class LockInfo(BaseModel):
     """Model for lock statistics."""
     name: str
-    backend: str
     created: datetime
     uptime: int
+
+
+class ManagerInfo(BrokerInfo):
+    """Model for manager statistics."""
+    client_info: ClientInfo
+    lock_info: LockInfo
+    total_published_messages: int
+    total_stored_messages: int

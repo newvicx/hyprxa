@@ -306,19 +306,12 @@ class MemoAPI:
                 assert cls.limiter is not None
                 return cls.client
             assert cls.limiter is None
-            client = Memcached(
-                memcached_settings.connection_uri,
-                connect_timeout=memcached_settings.connect_timeout,
-                timeout=memcached_settings.timeout,
-                no_delay=False,
-                max_pool_size=memcached_settings.max_pool_size,
-                pool_idle_timeout=memcached_settings.pool_idle_timeout
-            )
+            client = memcached_settings.get_client()
             cls.client = client
             # We need a limiter otherwise if more than `max_pool_size` threads
             # attempt to acquire a connection from the client we will get a
             # `RuntimeError`.`
-            cls.limiter = threading.Semaphore(value=memcached_settings.max_pool_size)
+            cls.limiter = memcached_settings.get_limiter()
             return client
 
 

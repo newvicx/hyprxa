@@ -1,8 +1,8 @@
 from collections.abc import AsyncIterable
 from typing import Set
 
+from hyprxa.base import BaseSubscriber, SubscriberCodes
 from hyprxa.events.models import TopicSubscription
-from hyprxa.integrations import BaseSubscriber, SubscriberCodes
 
 
 

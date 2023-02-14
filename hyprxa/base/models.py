@@ -1,14 +1,18 @@
 import hashlib
+from collections.abc import Sequence
+from datetime import datetime
+from enum import Enum, IntEnum
+from typing import List
 
 import orjson
-from pydantic import BaseModel
+from pydantic import validator
 
-from hyprxa.util.json import json_dumps, json_loads
+from hyprxa.util.models import BaseModel
 
 
 
 class BaseSubscription(BaseModel):
-    """A hashable base model.
+    """A hashable and sortable subscription model.
     
     Models must be json encode/decode(able). Hashes use the JSON string
     representation of the object and are consistent across runtimes.
@@ -24,8 +28,6 @@ class BaseSubscription(BaseModel):
     """
     class Config:
         frozen=True
-        json_dumps=json_dumps
-        json_loads=json_loads
 
     def __hash__(self) -> int:
         try:
@@ -57,3 +59,54 @@ class BaseSubscription(BaseModel):
             return hash(self) < hash(__o)
         except TypeError:
             return False
+        
+
+class BaseSubscriptionRequest(BaseModel):
+    """Base model for a sequence of subscriptions that a user registers with
+    one or more integrations.
+    """
+    subscriptions: Sequence[BaseSubscription]
+    
+    @validator("subscriptions")
+    def _sort_subscriptions(
+        cls,
+        subscriptions: Sequence[BaseSubscription]
+    ) -> List[BaseSubscription]:
+        subscriptions = set(subscriptions)
+        return sorted(subscriptions)
+        
+
+class SubscriberCodes(IntEnum):
+    """Codes returned from a `wait` on a subscriber."""
+    STOPPED = 1
+    DATA = 2
+
+
+class BrokerStatus(str, Enum):
+    """Status of RabbitMQ broker connection."""
+    CONNECTED = "connected"
+    DISCONNECTED = "disconnected"
+
+
+class SubscriberInfo(BaseModel):
+    """Model for subscriber statistics."""
+    name: str
+    stopped: bool
+    created: datetime
+    uptime: int
+    total_published_messages: int
+    total_subscriptions: int
+
+
+class BrokerInfo(BaseModel):
+    """Model for manager statistics."""
+    name: str
+    closed: bool
+    status: BrokerStatus
+    created: datetime
+    uptime: int
+    active_subscribers: int
+    active_subscriptions: int
+    subscriber_capacity: int
+    total_subscribers_serviced: int
+    subscriber_info: List[SubscriberInfo | None]

@@ -1,11 +1,11 @@
 import asyncio
 from collections.abc import AsyncIterable
 from datetime import datetime
-from typing import Any, Dict, List, Set
+from typing import Any, Dict, List, Tuple
 
 from motor.motor_asyncio import AsyncIOMotorCollection
 
-from hyprxa.integrations import Subscription
+from hyprxa.timeseries.models import AnySourceSubscriptionRequest
 from hyprxa.types import TimeseriesRow
 from hyprxa.util.time import (
     get_timestamp_index,
@@ -28,12 +28,12 @@ def format_timeseries_content(
 
 async def get_timeseries(
     collection: AsyncIOMotorCollection,
-    subscriptions: Set[Subscription],
+    subscriptions: AnySourceSubscriptionRequest,
     start_time: datetime,
     end_time: datetime | None = None,
     scan_rate: int = 5
 ) -> AsyncIterable[TimeseriesRow]:
-    """Stream timestamp aligned data for a sequence of subscriptions.
+    """Stream timestamp aligned data for a subscription request.
     
     The subscriptions are sorted according to their hash. Row indices align
     with the hash order.
@@ -58,8 +58,7 @@ async def get_timeseries(
     if start_time >= end_time:
         raise ValueError("'start_time' cannot be greater than or equal to 'end_time'")
 
-    request_chunk_size = min(int(150_000/len(subscriptions)), 10_000)
-    hashes = [hash(subscription) for subscription in sorted(subscriptions)]
+    request_chunk_size = min(int(150_000/len(subscriptions.subscriptions)), 10_000)
     start_times, end_times = split_range_on_frequency(
         start_time=start_time,
         end_time=end_time,
@@ -67,15 +66,23 @@ async def get_timeseries(
         scan_rate=scan_rate
     )
 
+    groups = subscriptions.group()
+    subscriptions: List[Tuple[int, str]] = []
+    for source in groups:
+        for subscription in groups[source]:
+            subscriptions.append((hash(subscription), source))
+    hashes = sorted(subscriptions)
+
     for start_time, end_time in zip(start_times, end_times):
         dispatch = [
             collection.find(
                 filter={
                     "timestamp": {"$gte": start_time, "$lt": end_time},
-                    "subscription": hash_
+                    "subscription": hash_,
+                    "source": source
                 },
                 projection={"timestamp": 1, "value": 1, "_id": 0}
-            ).sort("timestamp", 1).to_list(None) for hash_ in hashes
+            ).sort("timestamp", 1).to_list(None) for hash_, source in hashes
         ]
         contents = await asyncio.gather(*dispatch)
         data = [format_timeseries_content(content) for content in contents]
@@ -101,44 +108,3 @@ async def get_timeseries(
         if index:
             for timestamp, row in iter_timeseries_rows(index, data):
                 yield timestamp, row
-
-
-async def iter_subscriber(subscriber: Subscriber) -> AsyncIterable[str]:
-    """Iterates over a subscriber yielding messages."""
-    with subscriber:
-        async for data in subscriber:
-            yield data
-        else:
-            assert subscriber.stopped
-            raise DroppedSubscriber()
-        
-
-async def iter_subscribers(*subscribers: Subscriber) -> AsyncIterable[str]:
-    """Iterates over multiple subscribers creating a single stream."""
-    async def wrap_subscribers(queue: asyncio.Queue) -> None:
-        async def wrap_iter_subscriber(subscriber: Subscriber) -> None:
-            async for data in iter_subscriber(subscriber):
-                await queue.put(data)
-        
-        async with anyio.create_task_group() as tg:
-            for subscriber in subscribers:
-                tg.start_soon(wrap_iter_subscriber, subscriber)
-        
-    loop = asyncio.get_running_loop()
-    queue = asyncio.Queue(maxsize=1000)
-    wrapper = loop.create_task(wrap_subscribers(queue))
-    try:
-        while True:
-            getter = loop.create_task(queue.get())
-            await asyncio.wait([getter, wrapper], return_when=asyncio.FIRST_COMPLETED)
-            if not getter.done():
-                assert wrapper.done()
-                e = wrapper.exception()
-                if e:
-                    raise e
-                else:
-                    raise DroppedSubscriber()
-            yield getter.result()
-    finally:
-        getter.cancel()
-        wrapper.cancel()

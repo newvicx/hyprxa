@@ -1,6 +1,15 @@
+import logging
+import logging.config
+import pathlib
+import threading
 from enum import Enum
-from typing import List, Type
+from typing import Callable, List, Type
 
+import yaml
+from aiormq import Connection
+from motor.motor_asyncio import AsyncIOMotorClient
+from pymemcache import PooledClient as Memcached
+from pymongo import MongoClient
 from pydantic import (
     AmqpDsn,
     AnyHttpUrl,
@@ -15,7 +24,26 @@ from pydantic import (
 
 from hyprxa.util.defaults import DEFAULT_APPNAME, DEFAULT_DATABASE
 from hyprxa.util.formatting import format_docstrings
+from hyprxa.util.logging import cast_logging_level
 
+
+
+class HyprxaSettings(BaseSettings):
+    debug: bool = Field(
+        default=False,
+        description=format_docstrings("""If `True`, all authentication succeeds
+        with a admin rights, sets the FastAPI application to debug mode, and sets
+        all loggers to DEBUG. Defaults to `False`""")
+    )
+    interactive_auth: bool = Field(
+        default=False,
+        description=format_docstrings("""If `True`, enables interactive
+        authentication at '/docs' page. Defaults to `False`""")
+    )
+
+    class Config:
+        env_file=".env"
+        env_prefix="hyprxa"
 
 
 class MongoSettings(BaseSettings):
@@ -52,6 +80,12 @@ class MongoSettings(BaseSettings):
         database operation before concluding that a network error has occurred.
         0 means no timeout. Defaults to `10000` (10 seconds)""")
     )
+    timeout: conint(gt=0) = Field(
+        default=10_000,
+        description=format_docstrings("""Controls how long (in milliseconds)
+        the driver will wait when executing an operation (including retry
+        attempts) before raising a timeout error. Defaults to `10000`""")
+    )
     max_pool_size: conint(gt=0, le=100) = Field(
         default=4,
         description=format_docstrings("""The maximum allowable number of concurrent
@@ -68,6 +102,30 @@ class MongoSettings(BaseSettings):
         collections. Defaults to '{}'""".format(DEFAULT_APPNAME))
     )
 
+    def get_async_client(self) -> AsyncIOMotorClient:
+        return AsyncIOMotorClient(
+            self.connection_uri,
+            heartbeatFrequencyMS=self.heartbeat,
+            serverSelectionTimeoutMS=self.server_selection_timeout,
+            connectTimeoutMS=self.connect_timeout,
+            socketTimeoutMS=self.socket_timeout,
+            timeoutMS=self.timeout,
+            maxPoolSize=self.max_pool_size,
+            appname=self.appname
+        )
+    
+    def get_client(self) -> MongoClient:
+        return MongoClient(
+            self.connection_uri,
+            heartbeatFrequencyMS=self.heartbeat,
+            serverSelectionTimeoutMS=self.server_selection_timeout,
+            connectTimeoutMS=self.connect_timeout,
+            socketTimeoutMS=self.socket_timeout,
+            timeoutMS=self.timeout,
+            maxPoolSize=self.max_pool_size,
+            appname=self.appname
+        )
+
     class Config:
         env_file=".env"
         env_prefix="mongodb"
@@ -83,6 +141,9 @@ class RabbitMQSettings(BaseSettings):
     class Config:
         env_file=".env"
         env_prefix="rabbitmq"
+
+    def get_factory(self) -> Callable[[], Connection]:
+        return lambda: Connection(self.connection_uri)
 
 
 class MemcachedSettings(BaseSettings):
@@ -112,6 +173,19 @@ class MemcachedSettings(BaseSettings):
         description=format_docstrings("""The time (in seconds) before an unused
         pool connection is discarded. Defaults to `60`""")
     )
+
+    def get_client(self) -> Memcached:
+        return Memcached(
+            self.connection_uri,
+            connect_timeout=self.connect_timeout,
+            timeout=self.timeout,
+            no_delay=False,
+            max_pool_size=self.max_pool_size,
+            pool_idle_timeout=self.pool_idle_timeout
+        )
+    
+    def get_limiter(self) -> threading.Semaphore:
+        return threading.Semaphore(self.max_pool_size)
 
     class Config:
         env_file=".env"
@@ -188,17 +262,75 @@ class SentrySettings(BaseSettings):
         env_file=".env"
         env_prefix="sentry"
 
+    def configure_sentry(self) -> None:
+        """Configure sentry SDK from settings."""
+        try:
+            import sentry_sdk
+        except ImportError:
+            return
+        if not self.enabled or not self.dsn:
+            return
+        
+        integrations = []
+        from sentry_sdk.integrations.fastapi import FastApiIntegration
+        from sentry_sdk.integrations.logging import LoggingIntegration, ignore_logger
+        from sentry_sdk.integrations.pymongo import PyMongoIntegration
+        from sentry_sdk.integrations.starlette import StarletteIntegration
+        
+        integrations.extend(
+            [
+                FastApiIntegration(),
+                LoggingIntegration(
+                    level=cast_logging_level(self.level),
+                    event_level=cast_logging_level(self.event_level)
+                ),
+                PyMongoIntegration(),
+                StarletteIntegration()
+            ]
+        )
+        
+        sentry_sdk.init(
+            dsn=self.dsn,
+            traces_sample_rate=self.traces_sample_rate,
+            integrations=integrations,
+            send_default_pii=self.send_default_pii,
+            sample_rate=self.sample_rate,
+            environment=self.environment,
+            max_breadcrumbs=self.max_breadcrumbs
+        )
+
+        for logger in self.ignore_loggers:
+            ignore_logger(logger)
+
 
 class LoggingSettings(BaseSettings):
     config_path: FilePath | None = Field(
-        default=None,
+        default=pathlib.Path(__file__).parent.joinpath("./logging/logging.yml"),
         description=format_docstrings("""The path to logging configuration file.
-        This must be a .yml file. Defaults to `None`""")
+        This must be a .yml file. Defaults to '{}'""".format(
+            pathlib.Path(__file__).parent.joinpath("./logging/logging.yml")
+        ))
     )
 
     class Config:
         env_file=".env"
         env_prefix="logging"
+    
+    def configure_logging(self) -> None:
+        """Configure logging from a config file."""
+        # If the user has specified a logging path and it exists we will ignore the
+        # default entirely rather than dealing with complex merging
+        path = pathlib.Path(self.config_path)
+        if not path.exists():
+            raise FileNotFoundError(str(path))
+        config = yaml.safe_load(path.read_text())
+        logging.config.dictConfig(config)
+
+        if hyprxa_settings.debug:
+            loggers = [logging.getLogger(name) for name in logging.root.manager.loggerDict]
+            for logger in loggers:
+                logger.setLevel(level=logging.DEBUG)
+            logging.getLogger().setLevel(level=logging.DEBUG)
 
 
 class CachingSettings(BaseSettings):
@@ -329,6 +461,11 @@ class TimeseriesSettings(BaseSettings):
 
 
 class TimeseriesManagerSettings(BaseSettings):
+    lock_ttl: conint(gt=0) = Field(
+        default=5,
+        description=format_docstrings("""The time (in seconds) to acquire and
+        extend subscription locks for. Defaults to `5`""")
+    )
     exchange: str = Field(
         default="hyprxa.exchange.timeseries",
         description=format_docstrings("""The exchange name to use for the timeseries
@@ -416,6 +553,7 @@ class TimeseriesHandlerSettings(BaseSettings):
         env_prefix="timeseries"
 
 
+hyprxa_settings = HyprxaSettings()
 mongo_settings = MongoSettings()
 rabbitmq_settings = RabbitMQSettings()
 memcached_settings = MemcachedSettings()

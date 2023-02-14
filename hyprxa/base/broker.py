@@ -1,137 +1,25 @@
 import asyncio
 import itertools
 import logging
-from collections import deque
 from collections.abc import Coroutine, Sequence
 from contextlib import suppress
+from contextvars import Context
 from datetime import datetime
-from types import TracebackType
-from typing import Any, Callable, Deque, Dict, Set, Type
+from typing import Any, Callable, Dict, List, Set
 
 
 from aiormq import Channel, Connection
 from aiormq.abc import DeliveredMessage
 from pamqp import commands
 
-from hyprxa.broker.exceptions import SubscriptionTimeout
-from hyprxa.broker.models import (
-    BrokerInfo,
-    BrokerStatus,
-    SubscriberCodes,
-    SubscriberInfo
-)
-from hyprxa.models import BaseSubscription
+from hyprxa.base.exceptions import SubscriptionTimeout
+from hyprxa.base.models import BaseSubscription, BrokerInfo, BrokerStatus
+from hyprxa.base.subscriber import BaseSubscriber
 from hyprxa.util.backoff import EqualJitterBackoff
 
 
 
-_LOGGER = logging.getLogger("hyprxa.broker")
-
-
-class BaseSubscriber:
-    """Base implementation for a subscriber."""
-    def __init__(self) -> None:
-        self._subscriptions: Set[BaseSubscription] = set()
-        self._data: Deque[str] = None
-        self._data_waiter: asyncio.Future = None
-        self._stop_waiter: asyncio.Future = None
-        self._loop: asyncio.AbstractEventLoop = asyncio.get_event_loop()
-
-        self._created = datetime.now()
-        self._total_published = 0
-
-    @property
-    def data(self) -> Deque[str]:
-        return self._data
-
-    @property
-    def info(self) -> SubscriberInfo:
-        return SubscriberInfo(
-            name=self.__class__.__name__,
-            stopped=self.stopped,
-            created=self._created,
-            uptime=(datetime.now() - self._created).total_seconds(),
-            total_published_messages=self._total_published,
-            total_subscriptions=len(self.subscriptions)
-        )
-
-    @property
-    def stopped(self) -> bool:
-        return self._stop_waiter is None or self._stop_waiter.done()
-
-    @property
-    def subscriptions(self) -> Set[BaseSubscription]:
-        return self._subscriptions
-
-    @property
-    def waiter(self) -> asyncio.Future | None:
-        return self._stop_waiter
-
-    def stop(self, e: Exception | None) -> None:
-        waiter, self._stop_waiter = self._stop_waiter, None
-        if waiter is not None and not waiter.done():
-            _LOGGER.debug("%s stopped", self.__class__.__name__)
-            if e is not None:
-                waiter.set_exception(e)
-            else:
-                waiter.set_result(None)
-
-    def publish(self, data: bytes) -> None:
-        assert self._data is not None
-        self._data.append(data.decode())
-        
-        waiter, self._data_waiter = self._data_waiter, None
-        if waiter is not None and not waiter.done():
-            waiter.set_result(None)
-        
-        self._total_published += 1
-        _LOGGER.debug("Message published to %s", self.__class__.__name__)
-    
-    def start(self, subscriptions: Set[BaseSubscription], maxlen: int) -> asyncio.Future:
-        assert self._stop_waiter is None
-        assert self._data is None
-        
-        self._subscriptions.update(subscriptions)
-        self._data = deque(maxlen=maxlen)
-        
-        waiter = self._loop.create_future()
-        self._stop_waiter = waiter
-        return waiter
-
-    async def wait(self) -> None:
-        if self._data_waiter is not None:
-            raise RuntimeError("Two coroutines cannot wait for data simultaneously.")
-        
-        if self.stopped:
-            return SubscriberCodes.STOPPED
-        
-        stop = self._stop_waiter
-        waiter = self._loop.create_future()
-        self._data_waiter = waiter
-        try:
-            await asyncio.wait([waiter, stop], return_when=asyncio.FIRST_COMPLETED)
-            
-            if not waiter.done(): # Stop called
-                _LOGGER.debug("%s stopped waiting for data", self.__class__.__name__)
-                return SubscriberCodes.STOPPED
-            return SubscriberCodes.DATA
-        finally:
-            waiter.cancel()
-            self._data_waiter = None
-
-    def __enter__(self) -> "BaseSubscriber":
-        return self
-
-    def __exit__(
-        self,
-        exc_type: Type[BaseException] | None = None,
-        exc_value: BaseException | None = None,
-        traceback: TracebackType | None = None
-    ) -> None:
-        if isinstance(exc_value, Exception): # Not CancelledError
-            self.stop(exc_value)
-        else:
-            self.stop(None)
+_LOGGER = logging.getLogger("hyprxa.base")
 
 
 class BaseBroker:
@@ -187,47 +75,62 @@ class BaseBroker:
 
     @property
     def closed(self) -> bool:
+        """`True` if the broker is closed."""
         return self._runner is None or self._runner.done()
 
     @property
     def info(self) -> BrokerInfo:
+        """Return current information on the broker."""
         raise NotImplementedError()
+    
+    @property
+    def exchange(self) -> str:
+        """Returns the exchange name the broker declared on the RabbitMQ server."""
+        return self._exchange
 
     @property
     def max_subscribers(self) -> int:
+        """Returns the maximum number of subscribers this manager can support."""
         return self._max_subscribers
 
     @property
     def status(self) -> BrokerStatus:
+        """Return the status of the RabbitMQ connection."""
         if self._connection is not None and not self._connection.is_closed:
             return BrokerStatus.CONNECTED.value
         return BrokerStatus.DISCONNECTED.value
 
     @property
     def subscriptions(self) -> Set[BaseSubscription]:
+        """Return a set of the subscriptions from all subscribers."""
         subscriptions = set()
         for fut, subscriber in self._subscribers.items():
             if not fut.done():
                 subscriptions.update(subscriber.subscriptions)
         return subscriptions
 
-    def start(self, *args: Any, **kwargs: Any) -> None:
+    def start(self) -> None:
         """Start the broker."""
-        raise NotImplementedError()
+        if not self.closed:
+            return
+
+        runner: asyncio.Task = Context().run(self._loop.create_task, self.run())
+        runner.add_done_callback(lambda _: self._loop.create_task(self.close()))
+        self._runner = runner
 
     def close(self) -> None:
         """Close the broker."""
         for fut in itertools.chain(self._subscribers.keys(), self._background):
             fut.cancel()
-        fut, self.runner = self.runner, None
+        fut, self._runner = self._runner, None
         if fut is not None:
             fut.cancel()
 
     async def subscribe(self, subscriptions: Sequence[BaseSubscription]) -> BaseSubscriber:
-        """Subscribe to a sequence of topics on the event bus.
+        """Subscribe to a sequence of subscriptions on the broker.
         
         Args:
-            subscriptions: The topics to subscriber to.
+            subscriptions: The subscriptions to subscriber to.
         
         Returns:
             subscriber: The event subscriber instance.
@@ -245,7 +148,10 @@ class BaseBroker:
         channel: Channel,
         declare_ok: commands.Queue.DeclareOk,
     ) -> None:
-        """Bind the queue to all subscriber subscriptions."""
+        """Bind the queue to all subscriber subscriptions.
+        
+        This method derives the routing keys from the subscriber's subscriptions.
+        """
         raise NotImplementedError()
 
     async def run(self) -> None:
@@ -287,6 +193,7 @@ class BaseBroker:
         subscriber: BaseSubscriber,
         subscriptions: Set[BaseSubscription]
     ) -> None:
+        """Add a subscriber to the broker."""
         fut = subscriber.start(subscriptions=subscriptions, maxlen=self._maxlen)
         fut.add_done_callback(self.subscriber_lost)
         self._subscribers[fut] = subscriber
@@ -297,9 +204,13 @@ class BaseBroker:
         self,
         coro: Coroutine[Any, Any, Any],
         *args: Any,
+        callbacks: List[Callable[[asyncio.Future], None]],
         **kwargs: Any
     ) -> None:
+        """Add a background task to the broker."""
         fut = self._loop.create_task(coro(*args, **kwargs))
+        for callback in callbacks:
+            fut.add_done_callback(callback)
         fut.add_done_callback(self._background.discard)
         self._background.add(fut)
 
@@ -320,17 +231,29 @@ class BaseBroker:
         self._subscriber_connections[subscriber_connection] = subscriber
 
     def get_connection(self) -> Connection:
+        """Get a new connection object."""
         return self._factory()
 
     def remove_connection(self) -> None:
+        """Remove the connection from the broker. New subscribers will not
+        use the existing connection. Drops all subscriber connections.
+        """
         self._ready.clear()
         self._connection = None
+        for fut in self._subscriber_connections.keys(): fut.cancel()
 
     def set_connection(self, connection: Connection) -> None:
+        """Set the connection for the broker. New subscribers will use this
+        connection.
+        """
         self._connection = connection
         self._ready.set()
+        _LOGGER.debug("Connection established")
 
     def get_backoff(self, attempts: int) -> float:
+        """Get the backoff timeout based on the number of connection attempts
+        to RabbitMQ.
+        """
         return self._backoff.compute(attempts)
 
     async def wait(self, timeout: float | None = None) -> Connection:
@@ -346,7 +269,8 @@ class BaseBroker:
 
     async def _reconnect_subscriber(self, subscriber: BaseSubscriber) -> None:
         """Wait for RabbitMQ connection to be re-opened then restart subscriber
-        connection."""
+        connection.
+        """
         try:
             connection = await self.wait(self._reconnect_timeout)
         except SubscriptionTimeout as e:
@@ -387,9 +311,16 @@ class BaseBroker:
 
             if subscriber.stopped:
                 return
-            assert subscriber.waiter is not None and not subscriber.waiter.done()
+            assert subscriber.stopping is not None and not subscriber.stopping.done()
             
-            await asyncio.wait([channel.closing, subscriber.waiter])
+            await asyncio.wait([channel.closing, subscriber.stopping])
         finally:
             if not channel.is_closed:
                 await channel.close()
+
+    def __del__(self):
+        try:
+            if not self.closed:
+                self.close()
+        except Exception:
+            pass

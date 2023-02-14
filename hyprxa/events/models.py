@@ -4,11 +4,13 @@ from datetime import datetime
 from typing import Any, Dict, List, Tuple
 
 import orjson
+import pydantic
 from jsonschema import SchemaError
 from jsonschema.validators import validator_for
-from pydantic import BaseModel, Field, root_validator, validator
+from pydantic import Field, root_validator, validator
 
-from hyprxa.integrations import Subscription, SubscriptionRequest
+from hyprxa.base import BaseSubscription, BaseSubscriptionRequest, BrokerInfo
+from hyprxa.util.models import BaseModel
 
 
 
@@ -46,7 +48,7 @@ class TopicQueryResult(BaseModel):
     items: List[str | None]
 
 
-class TopicSubscription(Subscription):
+class TopicSubscription(BaseSubscription):
     """Subscription model for a topic or subset of a topic."""
     topic: str
     routing_key: str | None
@@ -56,7 +58,8 @@ class TopicSubscription(Subscription):
         return set_routing_key(v)
 
 
-class TopicSubscriptionRequest(SubscriptionRequest):
+class TopicSubscriptionRequest(BaseSubscriptionRequest):
+    """Model to subscribe to multiple topics."""
     subscriptions: Sequence[TopicSubscription]
 
 
@@ -85,11 +88,15 @@ class EventDocument:
             return False
 
 
+ValidatedEventDocument = pydantic.dataclasses.dataclass(EventDocument)
+
+
 class Event(BaseModel):
     """An event to publish."""
     topic: str
     routing_key: str | None
     payload: Dict[str, Any]
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
 
     @root_validator
     def _set_routing_key(cls, v: Dict[str, str | None]) -> Dict[str, str]:
@@ -107,5 +114,13 @@ class Event(BaseModel):
 
 
 class EventQueryResult(BaseModel):
-    """Result set of event query."""
-    items: List[Event | None]
+    """Result set of an event query."""
+    items: List[ValidatedEventDocument]
+
+
+class EventBusInfo(BrokerInfo):
+    """Model for event bus statistics."""
+    publish_buffer_size: int
+    storage_buffer_size: int
+    total_published_events: int
+    total_stored_events: int

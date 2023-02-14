@@ -7,9 +7,9 @@ from collections.abc import Generator, Iterable, Sequence
 from datetime import datetime, timedelta
 from typing import Any, Deque, Set, Tuple, Union
 
-from hyprxa.integrations import Subscription
 from hyprxa.timeseries.local.chunks import Chunk, TimeChunk
 from hyprxa.timeseries.local.exceptions import ChunkLimitError
+from hyprxa.timeseries.models import BaseSourceSubscription
 
 
 
@@ -45,17 +45,17 @@ class Timeseries:
     Timeseries are thread safe.
     
     Args:
-        subscription: The id of the timeseries
+        subscription: The id of the timeseries.
         samples: Any initial samples that should be added to the timeseries. These
             must be sorted by timestamp in monotonically increasing order otherwise
-            and `OldTimestampError` will be raised
-        retention: The retention period of the series (in seconds)
-        chunk_size: The fixed length of chunks in the timeseries
-        labels: Meta data for querying timeseries in a collection
+            and `OldTimestampError` will be raised.
+        retention: The retention period of the series (in seconds).
+        chunk_size: The fixed length of chunks in the timeseries.
+        labels: Meta data for querying timeseries in a collection.
     """
     def __init__(
         self,
-        subscription: Subscription,
+        subscription: BaseSourceSubscription,
         samples: Iterable[Tuple[datetime, Any]] = None,
         retention: int = 7200,
         chunk_size: int = 100,
