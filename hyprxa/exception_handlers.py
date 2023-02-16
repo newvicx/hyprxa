@@ -21,7 +21,7 @@ from hyprxa.util.mongo import ServerUnavailable
 _LOGGER = logging.getLogger("hyprxa.exceptions")
 
 
-async def handle_NotConfigureError(
+async def handle_NotConfiguredError(
     request: Request,
     exc: NotConfiguredError
 ) -> JSONResponse:

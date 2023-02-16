@@ -13,7 +13,6 @@ from hyprxa.base import BaseBroker, SubscriptionLimitError
 from hyprxa.events.exceptions import EventBusClosed
 from hyprxa.events.handler import MongoEventHandler
 from hyprxa.events.models import (
-    Event,
     EventBusInfo,
     EventDocument,
     TopicSubscription
@@ -35,7 +34,7 @@ class EventBus(BaseBroker):
     ) -> None:
         super().__init__(*args, **kwargs)
         self._storage = storage
-        self._publish_queue: asyncio.PriorityQueue[Tuple[int, Event]] = asyncio.PriorityQueue(maxsize=max_buffered_events)
+        self._publish_queue: asyncio.PriorityQueue[Tuple[int, EventDocument]] = asyncio.PriorityQueue(maxsize=max_buffered_events)
         self._storage_queue: asyncio.Queue[EventDocument] = asyncio.Queue(maxsize=max_buffered_events)
 
         self._total_published = 0
@@ -78,7 +77,7 @@ class EventBus(BaseBroker):
             except asyncio.QueueEmpty:
                 pass
 
-    def publish(self, event: Event) -> bool:
+    def publish(self, event: EventDocument) -> bool:
         """Publish an event to the bus.
         
         Args:
@@ -96,7 +95,7 @@ class EventBus(BaseBroker):
         if self._publish_queue.full() or self._storage_queue.full():
             return False
         self._publish_queue.put_nowait((1, event))
-        self._storage_queue.put_nowait(event.to_document())
+        self._storage_queue.put_nowait(event)
         return True
 
     async def subscribe(self, subscriptions: Sequence[TopicSubscription]) -> EventSubscriber:

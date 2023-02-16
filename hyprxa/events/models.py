@@ -85,6 +85,9 @@ class EventDocument:
     timestamp: datetime = field(default_factory=datetime.utcnow)
     posted_by: str | None = field(default_factory=get_username)
 
+    def publish(self) -> Tuple[str, bytes]:
+        return self.routing_key, orjson.dumps(self.payload)
+
     def __gt__(self, __o: object) -> bool:
         if not isinstance(__o, EventDocument):
             raise TypeError(f"'>' not supported between instances of {type(self)} and {type(__o)}.")

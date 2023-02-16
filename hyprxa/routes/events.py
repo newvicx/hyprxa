@@ -4,7 +4,6 @@ from datetime import datetime
 import anyio
 from fastapi import APIRouter, Depends, Query, WebSocket, status
 from fastapi.responses import StreamingResponse
-from flatten_dict import flatten
 from motor.motor_asyncio import AsyncIOMotorCollection
 from sse_starlette import EventSourceResponse
 
@@ -12,7 +11,6 @@ from hyprxa.auth import BaseUser
 from hyprxa.base import SubscriptionError, iter_subscriber
 from hyprxa.dependencies.auth import can_read, can_write
 from hyprxa.dependencies.events import (
-    find_one_event,
     find_one_topic,
     get_event,
     get_event_bus,
@@ -92,7 +90,7 @@ async def publish(
     bus: EventBus = Depends(get_event_bus),
 ) -> Status:
     """Publish an event to the bus."""
-    if bus.publish(event):
+    if bus.publish(event.to_document()):
         return Status(status=StatusOptions.OK)
     return Status(status=StatusOptions.FAILED)
 
@@ -101,7 +99,7 @@ async def publish(
 async def stream(
     topic: TopicDocument = Depends(get_topic),
     bus: EventBus = Depends(get_event_bus),
-    routing_key: str | None = None
+    routing_key: str | None = Query(default=None, alias="routingKey")
 ) -> EventSourceResponse:
     """Subscribe to a topic and stream events. This is an event sourcing (SSE)
     endpoint.
@@ -119,7 +117,7 @@ async def stream_ws(
     _: BaseUser = Depends(can_read),
     topic: TopicDocument = Depends(get_topic),
     bus: EventBus = Depends(get_event_bus),
-    routing_key: str | None = None
+    routing_key: str | None = Query(default=None, alias="routingKey")
 ) -> Event:
     """Subscribe to a topic and stream events over the websocket protocol."""
     try:
@@ -154,11 +152,17 @@ async def event(document: EventDocument = Depends(get_event)) -> EventDocument:
 async def events(
     topic: str,
     routing_key: str | None = None,
-    start_time: datetime = Depends(parse_timestamp(
-        query=Query(default=None, alias="start_time"),
-        default_timedelta=3600
-    )),
-    end_time: datetime = Depends(parse_timestamp(query=Query(default=None, alias="end_time"))),
+    start_time: datetime = Depends(
+        parse_timestamp(
+            query=Query(default=None, alias="startTime"),
+            default_timedelta=3600
+        )
+    ),
+    end_time: datetime = Depends(
+        parse_timestamp(
+            query=Query(default=None, alias="endTime")
+        )
+    ),
     collection: AsyncIOMotorCollection = Depends(get_event_collection),
     file_writer: FileWriter = Depends(get_file_writer),
 ) -> StreamingResponse:
@@ -175,17 +179,8 @@ async def events(
         file_writer.buffer, file_writer.writer, file_writer.suffix, file_writer.media_type
     )
 
-    sample = await find_one_event(
-        collection=collection,
-        topic=topic,
-        routing_key=routing_key
-    )
-    payload = sample.payload
-    flattened = flatten(payload, reducer="dot")
-    sorted_keys = sorted(flattened.keys())
-
-    chunk_size = min(int(100_0000/len(sorted_keys)), 5000)
-    writer(["timestamp", "posted_by", "topic", "routing_key", *sorted_keys])
+    chunk_size = 1000
+    writer(["timestamp", "posted_by", "topic", "routing_key", "payload"])
     filename = (
         f"{start_time.strftime('%Y%m%d%H%M%S')}-"
         f"{end_time.strftime('%Y%m%d%H%M%S')}-events{suffix}"

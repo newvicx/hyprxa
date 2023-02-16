@@ -125,13 +125,19 @@ async def stream_ws(
 async def timeseries(
     unitop: UnitOpDocument = Depends(get_unitop),
     subscriptions: AnySourceSubscriptionRequest = Depends(get_subscriptions),
-    start_time: datetime = Depends(parse_timestamp(
-        query=Query(default=None, alias="start_time"),
-        default_timedelta=3600
-    )),
-    end_time: datetime = Depends(parse_timestamp(query=Query(default=None, alias="end_time"))),
+    start_time: datetime = Depends(
+        parse_timestamp(
+            query=Query(default=None, alias="startTime"),
+            default_timedelta=3600
+        )
+    ),
+    end_time: datetime = Depends(
+        parse_timestamp(
+            query=Query(default=None, alias="endTime")
+        )
+    ),
     collection: AsyncIOMotorCollection = Depends(get_timeseries_collection),
-    scan_rate: int = 5,
+    scan_rate: int = Query(default=5, alias="scanRate"),
     file_writer: FileWriter = Depends(get_file_writer),
 ) -> StreamingResponse:
     """Get a batch of recorded events."""
