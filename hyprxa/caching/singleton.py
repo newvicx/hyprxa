@@ -16,7 +16,7 @@ from hyprxa.util.caching import CacheType
 
 
 
-_LOGGER = logging.getLogger("hyprxa.caching")
+_LOGGER = logging.getLogger("hyprxa.caching.singleton")
 
 
 class SingletonCache(BaseCache, Iterable[Any]):

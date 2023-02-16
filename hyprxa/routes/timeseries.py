@@ -24,11 +24,13 @@ from hyprxa.dependencies.timeseries import (
 from hyprxa.dependencies.util import get_file_writer, parse_timestamp
 from hyprxa.timeseries import (
     AnySourceSubscriptionRequest,
+    AvailableSources,
     SubscriptionMessage,
     UnitOp,
     UnitOpDocument,
     UnitOpQueryResult,
-    get_timeseries
+    get_timeseries,
+    SOURCES
 )
 from hyprxa.util.filestream import FileWriter, chunked_transfer
 from hyprxa.util.formatting import format_event_document
@@ -41,6 +43,12 @@ from hyprxa.util.websockets import ws_handler
 _LOGGER = logging.getLogger("hyprxa.api.timeseries")
 
 router = APIRouter(prefix="/timeseries", tags=["Timeseries"])
+
+
+@router.get("/sources", response_model=AvailableSources, dependencies=[Depends(can_read)])
+async def sources() -> AvailableSources:
+    """Retrieve a list of the available data sources."""
+    return {"sources": [source.source for source in SOURCES]}
 
 
 @router.get("/unitops/{unitop}", response_model=UnitOpDocument, dependencies=[Depends(can_read)])
@@ -117,11 +125,11 @@ async def stream_ws(
 async def timeseries(
     unitop: UnitOpDocument = Depends(get_unitop),
     subscriptions: AnySourceSubscriptionRequest = Depends(get_subscriptions),
-    start_time: datetime = parse_timestamp(
+    start_time: datetime = Depends(parse_timestamp(
         query=Query(default=None, alias="start_time"),
         default_timedelta=3600
-    ),
-    end_time: datetime = parse_timestamp(query=Query(default=None, alias="end_time")),
+    )),
+    end_time: datetime = Depends(parse_timestamp(query=Query(default=None, alias="end_time"))),
     collection: AsyncIOMotorCollection = Depends(get_timeseries_collection),
     scan_rate: int = 5,
     file_writer: FileWriter = Depends(get_file_writer),

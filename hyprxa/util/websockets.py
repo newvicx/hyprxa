@@ -4,6 +4,7 @@ from enum import IntEnum
 from typing import Any, Callable
 
 import anyio
+from fastapi import status
 from starlette.websockets import WebSocket, WebSocketDisconnect, WebSocketState
 
 
@@ -29,8 +30,8 @@ async def ws_handler(
 
     try:
         async with anyio.create_task_group() as tg:
-            tg.start_soon(receive(websocket))
-            tg.start_soon(wrap_send(send))
+            tg.start_soon(receive, websocket)
+            tg.start_soon(wrap_send)
 
     except WebSocketDisconnect as e:
         logger.debug(
@@ -63,6 +64,6 @@ async def _null_receive(websocket: WebSocket) -> None:
         if msg["type"] == "websocket.disconnect":
             code = msg["code"]
             if isinstance(code, IntEnum): # wsproto
-                raise WebSocketDisconnect(code=code.value, reason=code.name)
+                raise WebSocketDisconnect(code=code.value)
             # websockets
-            raise WebSocketDisconnect(code=code.code, reason=code.reason)
+            raise WebSocketDisconnect(code=code)

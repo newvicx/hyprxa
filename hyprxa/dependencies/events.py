@@ -1,3 +1,5 @@
+from dataclasses import astuple
+
 from fastapi import Depends, HTTPException, status
 from jsonschema import ValidationError, validate
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorCollection
@@ -8,7 +10,6 @@ from hyprxa.events import (
     Event,
     EventBus,
     EventDocument,
-    Topic,
     TopicDocument,
     TopicQueryResult,
     ValidatedTopicDocument,
@@ -63,8 +64,9 @@ async def find_one_event(
     
     events = await collection.find_one(
         query,
-        projection={"events": 1, "_id": 0}
-    ).sort("timestamp", -1)
+        projection={"events": 1, "_id": 0},
+        sort=[("timestamp", -1)]
+    )
 
     if not events:
         raise HTTPException(
@@ -72,11 +74,18 @@ async def find_one_event(
             detail="No events found matching criteria."
         )
     
-    return sorted(
-        set(
-            [ValidatedEventDocument(**event) for event in events["events"]]
+    documents = [ValidatedEventDocument(**event) for event in events["events"]]
+    if routing_key:
+        documents = [document for document in documents if document.routing_key == routing_key]
+
+    if not documents:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No events found matching criteria."
         )
-    )[-1]
+    
+    index = sorted([(document.timestamp, i) for i, document in enumerate(documents)])
+    return documents[index[-1][1]]
 
 
 async def get_topic(
@@ -84,7 +93,7 @@ async def get_topic(
     collection: AsyncIOMotorCollection = Depends(get_topics_collection)
 ) -> TopicDocument:
     """Search for a topic by name."""
-    return await find_one_topic(topic=topic, collection=collection)
+    return await find_one_topic(topic=topic, _collection=collection)
 
 
 # Topics need to be recalled frequently on event publishing so we cache the
@@ -113,12 +122,12 @@ async def list_topics(
 
 async def validate_event(
     event: Event,
-    document: Topic = Depends(get_topic)
+    collection: AsyncIOMotorCollection = Depends(get_topics_collection)
 ) -> Event:
     """Validate an event payload against the topic schema."""
-    topic = ValidatedTopicDocument(**document)
+    document = await find_one_topic(topic=event.topic, _collection=collection)
     try:
-        validate(event.payload, topic.schema)
+        validate(event.payload, document.jschema)
     except ValidationError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

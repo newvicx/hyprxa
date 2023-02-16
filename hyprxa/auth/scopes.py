@@ -1,7 +1,7 @@
 from collections.abc import Collection
 
 from fastapi import HTTPException, WebSocket, status
-from fastapi.requests import Request
+from fastapi.requests import HTTPConnection
 from starlette.authentication import AuthCredentials
 from starlette.types import Scope
 
@@ -89,7 +89,7 @@ class requires:
         self.any = any_
         self.raise_on_no_scopes = raise_on_no_scopes
 
-    async def __call__(self, connection: Request | WebSocket) -> BaseUser:
+    async def __call__(self, connection: HTTPConnection) -> BaseUser:
         scope: Scope = connection.scope
         
         if scope["type"] not in ("http", "websocket"):

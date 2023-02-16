@@ -143,7 +143,7 @@ class MongoWorker:
         """
         raise NotImplementedError()
 
-    def wait(self, timeout: float) -> None:
+    def wait(self, timeout: float | None = None) -> None:
         """Wait for worker to establish connection to MongoDB."""
         self._running_event.wait(timeout)
 

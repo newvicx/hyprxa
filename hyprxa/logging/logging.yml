@@ -41,17 +41,20 @@ handlers:
         filters: [correlation_id, ip_address, username, host]
 
 loggers:
+    hyprxa.api:
+        level: WARNING
+        
     hyprxa.auth:
         level: WARNING
     
     hyprxa.base:
-        level: WARNING
+        level: DEBUG
 
     hyprxa.caching:
-        level: WARNING
+        level: DEBUG
 
     hyprxa.events:
-        level: INFO
+        level: DEBUG
 
     hyprxa.timeseries:
         level: INFO

@@ -8,12 +8,11 @@ from typing import List, Set
 import anyio
 from pymemcache import PooledClient as Memcached
 
-from hyprxa.settings import memcached_settings, timeseries_manager_settings
 from hyprxa.timeseries.models import BaseSourceSubscription, LockInfo
 
 
 
-_LOGGER = logging.getLogger("hyprxa.integrations")
+_LOGGER = logging.getLogger("hyprxa.timeseries.lock")
 
 
 def memcached_poll(
@@ -85,15 +84,6 @@ class SubscriptionLock:
     def ttl(self) -> float:
         """The TTL used for locks in seconds."""
         return self._ttl
-    
-    @classmethod
-    def from_settings(cls) -> "SubscriptionLock":
-        memcached = memcached_settings.get_client()
-        return cls(
-            memcached=memcached,
-            ttl=timeseries_manager_settings.lock_ttl,
-            max_workers=memcached_settings.max_pool_size
-        )
 
     async def acquire(
         self,

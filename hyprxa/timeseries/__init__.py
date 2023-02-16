@@ -39,6 +39,17 @@ from .models import (
     ValidatedUnitOpDocument
 )
 from .stream import get_timeseries
+from .sources import (
+    AvailableSources,
+    Source,
+    ValidatedAnySourceSubscription,
+    ValidatedAnySourceSubscriptionRequest,
+    ValidatedBaseSourceSubscription,
+    ValidatedBaseSourceSubscriptionRequest,
+    ValidatedUnitOp,
+    add_source,
+    SOURCES
+)
 
 
 
@@ -78,5 +89,14 @@ __all__ = [
     "UnitOpDocument",
     "UnitOpQueryResult",
     "ValidatedUnitOpDocument",
-    "get_timeseries"
+    "get_timeseries",
+    "AvailableSources",
+    "Source",
+    "ValidatedAnySourceSubscription",
+    "ValidatedAnySourceSubscriptionRequest",
+    "ValidatedBaseSourceSubscription",
+    "ValidatedBaseSourceSubscriptionRequest",
+    "ValidatedUnitOp",
+    "add_source",
+    "SOURCES",
 ]

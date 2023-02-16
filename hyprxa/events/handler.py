@@ -14,7 +14,7 @@ from hyprxa.util.mongo import MongoWorker
 
 
 
-_LOGGER = logging.getLogger("hyprxa.events")
+_LOGGER = logging.getLogger("hyprxa.events.db")
 
 
 class EventWorker(MongoWorker):
@@ -57,17 +57,15 @@ class EventWorker(MongoWorker):
                 for _ in range(len(self._pending_documents)):
                     document: EventDocument = self._pending_documents.pop(0)
                     collection.update_one(
-                        filter={"_id": f"/^{document.topic}_/", "count": {"$lt": 1000}},
+                        filter={"topic": document.topic, "count": {"$lt": 1000}},
                         update={
                             "$push": {
                                 "events": asdict(document)
                             },
-                            "$inc": {"count": 1},
-                            "$setOnInsert": {
-                                "_id": f"{document.topic}_{int(document.timestamp.timestamp()*1_000_000)}",
-                                "timestamp": document.timestamp,
-                                "topic": document.topic
-                            }
+                            "$set": {
+                                "timestamp": document.timestamp
+                            },
+                            "$inc": {"count": 1}
                         },
                         upsert=True
                     )

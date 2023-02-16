@@ -8,7 +8,7 @@ from starlette.authentication import BaseUser as StarletteBaseUser
 
 
 
-_LOGGER = logging.getLogger("hyprxa.auth")
+_LOGGER = logging.getLogger("hyprxa.auth.models")
 
 
 

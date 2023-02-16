@@ -12,7 +12,7 @@ from hyprxa.types import TimeseriesRow
 
 
 
-_LOGGER = logging.getLogger("hyprxa.timeseries")
+_LOGGER = logging.getLogger("hyprxa.timeseries.local")
 
 
 class TimeseriesCollection:

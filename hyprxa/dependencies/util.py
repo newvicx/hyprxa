@@ -31,7 +31,7 @@ def parse_timestamp(query: Query, default_timedelta: int | None = None):
     else:
         default_timedelta = timedelta(seconds=0)
     def wrapper(time: str | None = query, timezone: str = DEFAULT_TIMEZONE) -> datetime:
-        now = pendulum.now(tz="UTC")
+        now = pendulum.now(tz="UTC").replace(tzinfo=None)
         if not time:
             return now - default_timedelta
         try:

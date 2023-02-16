@@ -17,7 +17,7 @@ from hyprxa.util.mongo import MongoWorker
 
 
 
-_LOGGER = logging.getLogger("hyprxa.timeseries")
+_LOGGER = logging.getLogger("hyprxa.timeseries.db")
 
 
 class TimeseriesWorker(MongoWorker):
@@ -50,11 +50,10 @@ class TimeseriesWorker(MongoWorker):
             )
             collection.create_index("expire", expireAfterSeconds=self._expire_after)
         except OperationFailure:
-            warnings.warn(
+            _LOGGER.warning(
                 f"Attempted to set a different expiry for {self._collection_name} "
                 "collection. An existing TTL index already exists and will be "
-                "used instead.",
-                stacklevel=2
+                "used instead."
             )
             collection = db[self._collection_name]
 

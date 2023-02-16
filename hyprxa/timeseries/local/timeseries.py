@@ -13,7 +13,7 @@ from hyprxa.timeseries.models import BaseSourceSubscription
 
 
 
-_LOGGER = logging.getLogger("hyprxa.timeseries")
+_LOGGER = logging.getLogger("hyprxa.timeseries.local")
 
 
 def validate_sample(sample: Tuple[datetime, Any]) -> None:

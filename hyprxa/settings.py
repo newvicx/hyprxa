@@ -25,7 +25,7 @@ from pydantic import (
 from hyprxa.base import BaseBroker
 from hyprxa.events import EventBus, MongoEventHandler
 from hyprxa.events.handler import EventWorker
-from hyprxa.sources import Source
+from hyprxa.timeseries.sources import Source
 from hyprxa.timeseries import (
     MongoTimeseriesHandler,
     SubscriptionLock,
@@ -102,7 +102,7 @@ class HyprxaSettings(BaseSettings):
 
     class Config:
         env_file=".env"
-        env_prefix="hyprxa"
+        env_prefix="hyprxa_"
 
 
 class MongoSettings(BaseSettings):
@@ -112,7 +112,7 @@ class MongoSettings(BaseSettings):
         Defaults to 'mongodb://localhost:27017/'""")
     )
     heartbeat: conint(ge=1000) = Field(
-        default=None,
+        default=20_000,
         description=format_docstring("""The number of milliseconds between
         periodic server checks, or `None` to accept the default frequency for
         `MongoClient`. Defaults to `None`""")
@@ -151,7 +151,7 @@ class MongoSettings(BaseSettings):
         connections to each connected server. Requests to a server will block if
         there are `max_pool_size` outstanding connections to the requested server.
         Can be 0, in which case there is no limit on the number of concurrent
-        connections. Defaults to `4`""")
+        connections. Defaults to `25`""")
     )
     appname: str = Field(
         default=DEFAULT_APPNAME,
@@ -187,7 +187,7 @@ class MongoSettings(BaseSettings):
 
     class Config:
         env_file=".env"
-        env_prefix="mongodb"
+        env_prefix="mongodb_"
 
 
 class RabbitMQSettings(BaseSettings):
@@ -199,7 +199,7 @@ class RabbitMQSettings(BaseSettings):
 
     class Config:
         env_file=".env"
-        env_prefix="rabbitmq"
+        env_prefix="rabbitmq_"
 
     def get_factory(self) -> Callable[[], Connection]:
         """Get a connection factory to the RabbitMQ server."""
@@ -256,7 +256,7 @@ class MemcachedSettings(BaseSettings):
 
     class Config:
         env_file=".env"
-        env_prefix="memcached"
+        env_prefix="memcached_"
 
 
 class SentrySettings(BaseSettings):
@@ -327,7 +327,7 @@ class SentrySettings(BaseSettings):
 
     class Config:
         env_file=".env"
-        env_prefix="sentry"
+        env_prefix="sentry_"
 
     def configure_sentry(self) -> None:
         """Configure sentry SDK from settings."""
@@ -381,7 +381,7 @@ class LoggingSettings(BaseSettings):
 
     class Config:
         env_file=".env"
-        env_prefix="logging"
+        env_prefix="logging_"
     
     def configure_logging(self) -> None:
         """Configure logging from a config file."""
@@ -399,6 +399,10 @@ class CachingSettings(BaseSettings):
         return values of memoized function caches. Defaults to `86400` (1 day)""")
     )
 
+    class Config:
+        env_file=".env"
+        env_prefix="caching_"
+
 
 class EventSettings(BaseSettings):
     database_name: str | None = Field(
@@ -414,7 +418,7 @@ class EventSettings(BaseSettings):
 
     class Config:
         env_file=".env"
-        env_prefix="events"
+        env_prefix="events_"
 
 
 class TopicSettings(BaseSettings):
@@ -424,14 +428,14 @@ class TopicSettings(BaseSettings):
         Defaults to '{}'""".format(DEFAULT_DATABASE))
     )
     collection_name: str | None = Field(
-        default=EventWorker.default_collection_name(),
+        default="topics",
         description=format_docstring("""The MongoDB collection to store
         topics. Defaults to 'topics'""")
     )
 
     class Config:
         env_file=".env"
-        env_prefix="topics"
+        env_prefix="topics_"
 
 
 class EventBusSettings(BaseSettings):
@@ -486,9 +490,9 @@ class EventBusSettings(BaseSettings):
 
     def get_event_bus(self) -> EventBus:
         """Configure and start an event bus instance from settings."""
-        storage = EVENT_HANDLER_SETTINGS.get_event_handler()
+        storage = EVENT_HANDLER_SETTINGS.get_handler()
         factory = RABBITMQ_SETTINGS.get_factory()
-        return EventBus(
+        bus = EventBus(
             storage=storage,
             factory=factory,
             exchange=self.exchange,
@@ -500,10 +504,12 @@ class EventBusSettings(BaseSettings):
             max_backoff=self.max_backoff,
             initial_backoff=self.initial_backoff
         )
+        bus.start()
+        return bus
 
     class Config:
         env_file=".env"
-        env_prefix="events"
+        env_prefix="events_"
 
 
 class EventHandlerSettings(BaseSettings):
@@ -534,11 +540,16 @@ class EventHandlerSettings(BaseSettings):
             flush_interval=self.flush_interval,
             buffer_size=self.buffer_size,
             max_retries=self.max_retries,
-            **MONGO_SETTINGS.dict(exclude={"connection_uri", "max_pool_size"})
+            heartbeatFrequencyMS=MONGO_SETTINGS.heartbeat,
+            serverSelectionTimeoutMS=MONGO_SETTINGS.server_selection_timeout,
+            connectTimeoutMS=MONGO_SETTINGS.connect_timeout,
+            socketTimeoutMS=MONGO_SETTINGS.socket_timeout,
+            timeoutMS=MONGO_SETTINGS.timeout,
+            appname=MONGO_SETTINGS.appname
         )
     class Config:
         env_file=".env"
-        env_prefix="events"
+        env_prefix="events_"
 
 
 class TimeseriesSettings(BaseSettings):
@@ -555,7 +566,7 @@ class TimeseriesSettings(BaseSettings):
 
     class Config:
         env_file=".env"
-        env_prefix="timeseries"
+        env_prefix="timeseries_"
 
 
 class UnitOpSettings(BaseSettings):
@@ -572,7 +583,7 @@ class UnitOpSettings(BaseSettings):
 
     class Config:
         env_file=".env"
-        env_prefix="unitops"
+        env_prefix="unitops_"
 
 
 class TimeseriesManagerSettings(BaseSettings):
@@ -647,7 +658,7 @@ class TimeseriesManagerSettings(BaseSettings):
             ttl=self.lock_ttl,
             max_workers=MEMCACHED_SETTINGS.max_pool_size
         )
-        return TimeseriesManager(
+        manager = TimeseriesManager(
             source=source,
             lock=lock,
             storage=storage,
@@ -662,10 +673,12 @@ class TimeseriesManagerSettings(BaseSettings):
             initial_backoff=self.initial_backoff,
             max_failed=self.max_failed
         )
+        manager.start()
+        return manager
 
     class Config:
         env_file=".env"
-        env_prefix="timeseries"
+        env_prefix="timeseries_"
 
 
 class TimeseriesHandlerSettings(BaseSettings):
@@ -706,12 +719,17 @@ class TimeseriesHandlerSettings(BaseSettings):
             buffer_size=self.buffer_size,
             max_retries=self.max_retries,
             expire_after=self.expire_after,
-            **MONGO_SETTINGS.dict(exclude={"connection_uri", "max_pool_size"})
+            heartbeatFrequencyMS=MONGO_SETTINGS.heartbeat,
+            serverSelectionTimeoutMS=MONGO_SETTINGS.server_selection_timeout,
+            connectTimeoutMS=MONGO_SETTINGS.connect_timeout,
+            socketTimeoutMS=MONGO_SETTINGS.socket_timeout,
+            timeoutMS=MONGO_SETTINGS.timeout,
+            appname=MONGO_SETTINGS.appname
         )
 
     class Config:
         env_file=".env"
-        env_prefix="timeseries"
+        env_prefix="timeseries_"
 
 
 HYPRXA_SETTINGS = HyprxaSettings()

@@ -8,7 +8,7 @@ from flatten_dict import flatten
 from motor.motor_asyncio import AsyncIOMotorCollection
 from sse_starlette import EventSourceResponse
 
-from hyprxa.auth import BaseUser, requires
+from hyprxa.auth import BaseUser
 from hyprxa.base import SubscriptionError, iter_subscriber
 from hyprxa.dependencies.auth import can_read, can_write
 from hyprxa.dependencies.events import (
@@ -54,12 +54,12 @@ async def topic(
     return document
 
 
-@router.get("/topics/list", response_model=TopicQueryResult, dependencies=[Depends(can_read)])
+@router.get("/topics", response_model=TopicQueryResult, dependencies=[Depends(can_read)])
 async def topics(
-    topics: TopicQueryResult = Depends(list_topics)
+    documents: TopicQueryResult = Depends(list_topics)
 ) -> TopicQueryResult:
     """Retrieve a collection of unitop records."""
-    return topics
+    return documents
 
 
 @router.post("/topics/save", response_model=Status)
@@ -74,7 +74,7 @@ async def save(
         filter={"topic": topic.topic},
         update={
             "$set": {
-                "schema": topic.schema_,
+                "jschema": topic.jschema,
                 "modified_by": user.identity,
                 "modified_at": datetime.utcnow()
             }
@@ -86,7 +86,7 @@ async def save(
     return Status(status=StatusOptions.FAILED)
 
 
-@router.post("/publish/{topic}", response_model=Status, dependencies=[Depends(can_write)])
+@router.post("/publish", response_model=Status, dependencies=[Depends(can_write)])
 async def publish(
     event: Event = Depends(validate_event),
     bus: EventBus = Depends(get_event_bus),
@@ -154,11 +154,11 @@ async def event(document: EventDocument = Depends(get_event)) -> EventDocument:
 async def events(
     topic: str,
     routing_key: str | None = None,
-    start_time: datetime = parse_timestamp(
+    start_time: datetime = Depends(parse_timestamp(
         query=Query(default=None, alias="start_time"),
         default_timedelta=3600
-    ),
-    end_time: datetime = parse_timestamp(query=Query(default=None, alias="end_time")),
+    )),
+    end_time: datetime = Depends(parse_timestamp(query=Query(default=None, alias="end_time"))),
     collection: AsyncIOMotorCollection = Depends(get_event_collection),
     file_writer: FileWriter = Depends(get_file_writer),
 ) -> StreamingResponse:
@@ -188,7 +188,7 @@ async def events(
     writer(["timestamp", "posted_by", "topic", "routing_key", *sorted_keys])
     filename = (
         f"{start_time.strftime('%Y%m%d%H%M%S')}-"
-        f"{end_time.strftime('%Y%m%d%H%M%S')}-events.{suffix}"
+        f"{end_time.strftime('%Y%m%d%H%M%S')}-events{suffix}"
     )
 
     return StreamingResponse(

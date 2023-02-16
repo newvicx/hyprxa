@@ -19,12 +19,12 @@ from hyprxa.caching.core import (
     invalidate_cached_value
 )
 from hyprxa.caching.exceptions import CacheError, CacheKeyNotFoundError
-from hyprxa.settings import cache_settings, memcached_settings
+from hyprxa.settings import CACHE_SETTINGS, MEMCACHED_SETTINGS
 from hyprxa.util.caching import CacheType
 
 
 
-_LOGGER = logging.getLogger("hyprxa.caching")
+_LOGGER = logging.getLogger("hyprxa.caching.memo")
 
 
 class MemoCache(BaseCache):
@@ -76,8 +76,9 @@ class MemoCache(BaseCache):
         """Read a cached value from the Memcached server."""
         key = self._get_memcached_key(value_key)
         try:
+            client = memo.get_client()
             with memo.limiter:
-                value = memo.get_client().get(key)
+                value = client.get(key)
         except Exception as e:
             _LOGGER.warning("Unable to read from memcached cache", exc_info=True)
             raise CacheError("Unable to read from cache.") from e
@@ -90,8 +91,9 @@ class MemoCache(BaseCache):
         """Write a value to the Memcached server."""
         key = self._get_memcached_key(value_key)
         try:
+            client = memo.get_client()
             with memo.limiter:
-                value = memo.get_client().set(key, pickled_value, expire=self._ttl)
+                value = client.set(key, pickled_value, expire=self._ttl)
         except Exception as e:
             _LOGGER.warning("Unable to write to memcached cache", exc_info=True)
             raise CacheError("Unable to write to cache.") from e
@@ -104,8 +106,9 @@ class MemoCache(BaseCache):
         """
         key = self._get_memcached_key(value_key)
         try:
+            client = memo.get_client()
             with memo.limiter:
-                deleted = memo.get_client().delete(key)
+                deleted = client.delete(key)
         except Exception:
             _LOGGER.warning("Unable to delete from memcached", exc_info=True)
         _LOGGER.debug("Memcached delete result %s: %s", key, deleted)
@@ -275,7 +278,7 @@ class MemoAPI:
         if isinstance(ttl, timedelta):
             ttl_seconds = ttl.total_seconds()
         elif ttl is None:
-            ttl_seconds = cache_settings.ttl
+            ttl_seconds = CACHE_SETTINGS.ttl
         else:
             ttl_seconds = ttl
         
@@ -306,12 +309,13 @@ class MemoAPI:
                 assert cls.limiter is not None
                 return cls.client
             assert cls.limiter is None
-            client = memcached_settings.get_client()
+            _LOGGER.debug("Creating new memcached client")
+            client = MEMCACHED_SETTINGS.get_client()
             cls.client = client
             # We need a limiter otherwise if more than `max_pool_size` threads
             # attempt to acquire a connection from the client we will get a
             # `RuntimeError`.`
-            cls.limiter = memcached_settings.get_limiter()
+            cls.limiter = MEMCACHED_SETTINGS.get_limiter()
             return client
 
 

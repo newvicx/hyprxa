@@ -15,7 +15,6 @@ from hyprxa.base import (
     BaseSubscriber,
     SubscriptionLimitError
 )
-from hyprxa.sources import Source
 from hyprxa.timeseries.base import BaseClient
 from hyprxa.timeseries.exceptions import (
     ClientClosed,
@@ -31,10 +30,11 @@ from hyprxa.timeseries.models import (
     ManagerInfo,
     SubscriptionMessage
 )
+from hyprxa.timeseries.sources import Source
 
 
 
-_LOGGER = logging.getLogger("hyprxa.timeseries")
+_LOGGER = logging.getLogger("hyprxa.timeseries.manager")
 
 
 class TimeseriesManager(BaseBroker):
@@ -213,17 +213,16 @@ class TimeseriesManager(BaseBroker):
                     self.set_connection(connection)
                 
                 try:
+                    connection.closing.add_done_callback(lambda _: self.remove_connection())
                     async with anyio.create_task_group() as tg:
                         tg.start_soon(self._publish_messages, connection, self.exchange)
                         await asyncio.shield(connection.closing)
                 except ClientClosed:
-                    self.remove_connection()
                     with suppress(Exception):
                         await connection.close(timeout=2)
                     _LOGGER.info("Exited manager because client is closed")
                     raise
                 except (Exception, anyio.ExceptionGroup):
-                    self.remove_connection()
                     with suppress(Exception):
                         await connection.close(timeout=2)
                     _LOGGER.warning("Error in manager", exc_info=True)
@@ -342,9 +341,10 @@ class TimeseriesManager(BaseBroker):
                 unsubscribe = await self._lock.client_poll(subscriptions)
                 if unsubscribe:
                     _LOGGER.info("Unsubscribing from %i subscriptions", len(unsubscribe))
-                    fut = self._loop.create_task(self._client.unsubscribe(unsubscribe))
-                    fut.add_done_callback(self._background.discard)
-                    self._background.add(fut)
+                    self.add_background_task(
+                        self._client.unsubscribe,
+                        unsubscribe
+                    )
     
     async def _poll_subscriber_subscriptions(self) -> None:
         """Poll subscriber subscriptions owned by this process."""

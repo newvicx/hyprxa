@@ -102,3 +102,4 @@ class SSEParser:
             # Dispatch the event
             self._logger.debug('Dispatching %s...', event)
             yield event
+            self._buffer = b''

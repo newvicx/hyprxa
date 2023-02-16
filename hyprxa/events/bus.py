@@ -22,7 +22,7 @@ from hyprxa.events.subscriber import EventSubscriber
 
 
 
-_LOGGER = logging.getLogger("hyprxa.events")
+_LOGGER = logging.getLogger("hyprxa.events.bus")
 
 
 class EventBus(BaseBroker):
@@ -97,6 +97,7 @@ class EventBus(BaseBroker):
             return False
         self._publish_queue.put_nowait((1, event))
         self._storage_queue.put_nowait(event.to_document())
+        return True
 
     async def subscribe(self, subscriptions: Sequence[TopicSubscription]) -> EventSubscriber:
         if self.closed:
@@ -164,11 +165,11 @@ class EventBus(BaseBroker):
                     self.set_connection(connection)
                 
                 try:
+                    connection.closing.add_done_callback(lambda _: self.remove_connection())
                     async with anyio.create_task_group() as tg:
                         tg.start_soon(self._publish_events, connection, self.exchange)
                         await asyncio.shield(connection.closing)
                 except (Exception, anyio.ExceptionGroup):
-                    self.remove_connection()
                     with suppress(Exception):
                         await connection.close(timeout=2)
                     _LOGGER.warning("Error in manager", exc_info=True)

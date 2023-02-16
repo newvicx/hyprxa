@@ -96,10 +96,11 @@ async def get_timeseries(
             collection.find(
                 filter={
                     "timestamp": end_time,
-                    "subscription": hash_
+                    "subscription": hash_,
+                    "source": source
                 },
                 projection={"timestamp": 1, "value": 1, "_id": 0}
-            ).sort("timestamp", 1).to_list(None) for hash_ in hashes
+            ).sort("timestamp", 1).to_list(None) for hash_, source in hashes
         ]
         contents = await asyncio.gather(*dispatch)
         data = [format_timeseries_content(content) for content in contents]

@@ -3,6 +3,10 @@ from hyprxa.exceptions import HyprxaError
 
 
 
+class TimeseriesError(HyprxaError):
+    """Base error for timeseries related errors."""
+    
+
 class SubscriptionLockError(SubscriptionError):
     """Raised by a manager after it failed to acquire locks for subscriptions
     as a result of a LockingError.
@@ -15,10 +19,6 @@ class ClientSubscriptionError(SubscriptionError):
 
 class ManagerClosed(BrokerClosed):
     """Raised when attempting to subscribe to a manager instance is closed."""
-
-
-class TimeseriesError(HyprxaError):
-    """Base error for timeseries related errors."""
 
 
 class ClientClosed(TimeseriesError):

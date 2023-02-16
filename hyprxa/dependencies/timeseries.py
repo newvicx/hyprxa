@@ -1,7 +1,7 @@
-import logging
 from typing import Dict, List
 
-from fastapi import Depends, HTTPException, Request, WebSocket, status
+from fastapi import Depends, HTTPException, status
+from fastapi.requests import HTTPConnection
 from pydantic import Json, ValidationError
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorCollection
 
@@ -14,25 +14,19 @@ from hyprxa.settings import (
     TIMESERIES_MANAGER_SETTINGS,
     UNITOP_SETTINGS
 )
-from hyprxa.sources import (
-    Source,
-    ValidatedAnySourceSubscription,
-    ValidatedAnySourceSubscriptionRequest,
-    ValidatedUnitOp,
-    SOURCES
-)
 from hyprxa.timeseries import (
     AnySourceSubscriptionRequest,
+    Source,
     TimeseriesManager,
     UnitOp,
     UnitOpDocument,
     UnitOpQueryResult,
-    ValidatedUnitOpDocument
+    ValidatedAnySourceSubscription,
+    ValidatedUnitOp,
+    ValidatedUnitOpDocument,
+    SOURCES
 )
 
-
-
-_LOGGER = logging.getLogger("hyprxa.api")
 
 
 async def get_timeseries_collection(
@@ -54,6 +48,7 @@ async def get_unitop(
     collection: AsyncIOMotorCollection = Depends(get_unitop_collection),
 ) -> UnitOpDocument:
     """Get a unitop document by its name."""
+    await find_one_unitop(unitop=unitop, _collection=collection)
     
 
 @memo
@@ -78,7 +73,7 @@ async def get_unitops(
 ) -> UnitOpQueryResult:
     """Get a result set of unitops from a freeform query."""
     try:
-        documents = await collection.find(q).to_list(None)
+        documents = await collection.find(q, projection={"_id": 0}).to_list(None)
     except TypeError: # Invalid query
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid query.")
     if documents:
@@ -95,31 +90,19 @@ async def get_manager(source: Source) -> TimeseriesManager:
 
 
 async def get_subscriptions(
-    connection: Request | WebSocket,
+    connection: HTTPConnection,
     unitop: UnitOpDocument = Depends(get_unitop)
 ) -> AnySourceSubscriptionRequest:
     """Extract subscriptions from unitop and authorize all sources."""
-    subscription_model = ValidatedAnySourceSubscriptionRequest(
-        ValidatedAnySourceSubscription()
+    subscriptions = AnySourceSubscriptionRequest(
+        subscriptions=[subscription for subscription in unitop.data_mapping.values()]
     )
-    unitop_model = ValidatedUnitOp(subscription_model)
-    try:
-        validated_unitop = unitop_model(
-            name=unitop.name,
-            data_mapping=unitop.data_mapping,
-            meta=unitop.meta
-        )
-        subscriptions = subscription_model(
-            subscriptions=[subscription for subscription in validated_unitop.data_mapping.values()]
-        )
-    except ValidationError:
-        # Validation error here means an unvalidated model got into the databse
-        _LOGGER.error("UnitOp validation failed on read", exc_info=True)
-        raise
 
     groups = subscriptions.group()
     for source_id in groups.keys():
         if source_id not in SOURCES:
+            # The source might no longer be used. In which case the unitop needs
+            # to be updated to remove it.
             raise NotConfiguredError(f"{source_id} is not registered with application.")
         source = SOURCES[source_id]
         await source.is_authorized(connection)
@@ -148,9 +131,7 @@ async def get_subscribers(
 
 async def validate_sources(unitop: UnitOp) -> UnitOp:
     """Validate that sources in unitop data mapping are valid."""
-    subscription_model = ValidatedAnySourceSubscriptionRequest(
-        ValidatedAnySourceSubscription()
-    )
+    subscription_model = ValidatedAnySourceSubscription()
     unitop_model = ValidatedUnitOp(subscription_model)
     try:
         unitop_model(
@@ -162,7 +143,7 @@ async def validate_sources(unitop: UnitOp) -> UnitOp:
         # If we just re-raise, FastAPI will consider it a 500 error. We want 422
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=e.json()
+            detail=e.errors()
         ) from e
     else:
         return unitop

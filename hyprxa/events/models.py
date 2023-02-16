@@ -32,23 +32,23 @@ def set_routing_key(v: Dict[str, str | None]) -> Dict[str, str]:
 class Topic(BaseModel):
     """A topic model tied to a class of events."""
     topic: str
-    schema_: Dict[str, Any] = Field(alias="schema")
+    jschema: Dict[str, Any]
     
-    @validator("schema_")
-    def _is_valid_schema(cls, schema: Dict[str, Any]) -> Dict[str, Any]:
-        validator_ = validator_for(schema)
+    @validator("jschema")
+    def _is_valid_schema(cls, jschema: Dict[str, Any]) -> Dict[str, Any]:
+        validator_ = validator_for(jschema)
         try:
-            validator_.check_schema(schema)
+            validator_.check_schema(jschema)
         except SchemaError as e:
             raise ValueError(f"{e.json_path}-{e.message}")
-        return schema
+        return jschema
 
 
 @dataclass
 class TopicDocument:
     """MongoDB document model for a topic."""
     topic: str
-    schema: Dict[str, Any]
+    jschema: Dict[str, Any]
     modified_by: str | None
     modified_at: datetime
 
@@ -58,7 +58,7 @@ ValidatedTopicDocument = pydantic.dataclasses.dataclass(TopicDocument)
 
 class TopicQueryResult(BaseModel):
     """Result set of topic query."""
-    items: List[str | None] = field(default_factory=list)
+    items: List[str | None] = Field(default_factory=list)
 
 
 class TopicSubscription(BaseSubscription):

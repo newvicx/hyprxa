@@ -19,5 +19,11 @@ def json_loads(v: str | bytes) -> Any:
 def json_dumps(obj: Any, as_bytes: bool = False, **dumps_kwargs) -> str | bytes:
     """JSON encoder which uses orjson for serializing data."""
     if as_bytes:
-        return orjson.dumps(obj, **dumps_kwargs)
-    return orjson.dumps(obj, **dumps_kwargs).decode()
+        try:
+            return orjson.dumps(obj, **dumps_kwargs)
+        except TypeError: # Got a keyword that orjson doesnt support such as 'indent'
+            return json.dumps(obj, **dumps_kwargs).encode()
+    try:
+        return orjson.dumps(obj, **dumps_kwargs).decode()
+    except TypeError:
+        return json.dumps(obj, **dumps_kwargs)

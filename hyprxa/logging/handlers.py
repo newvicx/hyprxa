@@ -17,27 +17,9 @@ from hyprxa.util.logging import cast_logging_level
 
 class LogWorker(MongoWorker):
     """Manages the submission of logs to MongoDB in a background thread."""
-    def __init__(
-        self,
-        connection_url: str = "mongodb://localhost:27017",
-        database_name: str | None = None,
-        collection_name: str | None = None,
-        flush_interval: int = 10,
-        buffer_size: int = 200,
-        max_retries: int = 3,
-        expire_after: int = 1_209_600, # 14 days
-        **kwargs: Any
-    ) -> None:
-        super().__init__(
-            connection_url,
-            database_name,
-            collection_name,
-            flush_interval,
-            buffer_size,
-            max_retries,
-            **kwargs
-        )
-        self._expire_after = expire_after
+    def __init__(self, **kwargs: Any) -> None:
+        self._expire_after = kwargs.pop("expire_after")
+        super().__init__(**kwargs)
 
     def default_collection_name(self) -> str:
         return "logs"
@@ -133,34 +115,19 @@ class MongoLogHandler(logging.Handler):
 
     def __init__(
         self,
-        connection_url: str = "mongodb://localhost:27017",
-        database_name: str | None = None,
-        collection_name: str | None = None,
-        flush_interval: int = 10,
-        flush_level: str | int = logging.ERROR,
-        buffer_size: int = 200,
-        max_retries: int = 3,
-        expire_after: int = 1_209_600, # 14 days
+        flush_level: int | str,
+        expire_after: int = 2_592_000,
         **kwargs: Any
     ) -> None:
-        super().__init__()
-        self._kwargs = {
-            "connection_url": connection_url,
-            "database_name": database_name,
-            "collection_name": collection_name,
-            "flush_interval": flush_interval,
-            "buffer_size": buffer_size,
-            "max_retries": max_retries,
-            "expire_after": expire_after
-        }
-        self._kwargs.update(kwargs)
+        kwargs.update({"expire_after": expire_after})
+        self.kwargs = kwargs
         self._flush_level = cast_logging_level(flush_level)
 
     def start_worker(self) -> LogWorker:
         """Start the log worker thread."""
-        worker = LogWorker(**self._kwargs)
+        worker = LogWorker(**self.kwargs)
         worker.start()
-        worker.wait(timeout=5)
+        worker.wait(timeout=2)
         if not worker.is_running:
             raise TimeoutError("Timed out waiting for worker.")
         return worker

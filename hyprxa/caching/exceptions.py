@@ -7,6 +7,7 @@ from hyprxa.util.caching import (
     get_return_value_type
 )
 from hyprxa.exceptions import HyprxaError
+from hyprxa.util.formatting import format_docstring
 
 
 
@@ -61,19 +62,15 @@ class UnhashableParamError(CachingException):
         func_name = func.__name__
         arg_replacement_name = f"_{arg_name}" if arg_name is not None else "_arg"
 
-        return " ".join(
-            [
-                segment.strip() for segment in
-                """Cannot hash argument '{}' (of type {}) in '{}'. To address this,
-                you can force this argument to be ignored by adding a leading
-                underscore to the arguments name in the function signature (eg. '{}').
-                """.format(
-                    arg_name_str,
-                    arg_type,
-                    func_name,
-                    arg_replacement_name
-                ).splitlines()
-            ]
+        return format_docstring("""Cannot hash argument '{}' (of type {}) in
+            '{}'. To address this, you can force this argument to be ignored by
+            adding a leading underscore to the arguments name in the function
+            signature (eg. '{}').""".format(
+                arg_name_str,
+                arg_type,
+                func_name,
+                arg_replacement_name
+            )
         )
 
 
@@ -84,17 +81,13 @@ class UnserializableReturnValueError(CachingException):
         super().__init__(msg)
     
     def _create_message(self, func, return_value) -> str:
-        return " ".join(
-            [
-                segment.strip() for segment in
-                """Cannot serialize the return value of type '{}' in '{}'. 'memo'
-                uses pickle to serialize the functions return value and safely store it in
-                cache without mutating the original object. Please convert the return value
-                to a pickle-serializable type. If you want to cache unserializable objects
-                such as database connections or HTTP sessions, use 'singleton' instead.
-                """.format(
-                    get_return_value_type(return_value),
-                    get_cached_func_name(func)
-                ).splitlines()
-            ]
+        return format_docstring("""Cannot serialize the return value of type
+            '{}' in '{}'. 'memo' uses pickle to serialize the functions return
+            value and safely store it in cache without mutating the original
+            object. Please convert the return value to a pickle-serializable
+            type. If you want to cache unserializable objects such as database
+            connections or HTTP sessions, use 'singleton' instead.""".format(
+                get_return_value_type(return_value),
+                get_cached_func_name(func)
+            )
         )

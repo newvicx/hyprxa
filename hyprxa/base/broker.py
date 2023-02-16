@@ -1,4 +1,5 @@
 import asyncio
+import atexit
 import itertools
 import logging
 from collections.abc import Coroutine, Sequence
@@ -72,6 +73,8 @@ class BaseBroker:
 
         self.created = datetime.utcnow()
         self._subscribers_serviced = 0
+
+        atexit.register(self.close)
 
     @property
     def closed(self) -> bool:
@@ -164,6 +167,7 @@ class BaseBroker:
 
     def subscriber_lost(self, fut: asyncio.Future) -> None:
         """Callback after subscribers have stopped."""
+        _LOGGER.debug("Subscriber lost")
         assert fut in self._subscribers
         self._subscribers.pop(fut)
         e: Exception = None
@@ -176,6 +180,7 @@ class BaseBroker:
         """Callback after connection between subscriber and broke is lost due to
         either a subscriber or broker disconnect.
         ."""
+        _LOGGER.debug("Subscriber disconnect")
         assert fut in self._subscriber_connections
         subscriber = self._subscriber_connections.pop(fut)
         e: Exception = None
@@ -186,7 +191,8 @@ class BaseBroker:
         if not subscriber.stopped:
             # Connection lost due to broker disconnect, re-establish after broker
             # connection is re-established.
-            self.add_background_task(self._reconnect_subscriber)
+            _LOGGER.debug("Attempting to reconnect subscriber")
+            self.add_background_task(self._reconnect_subscriber, subscriber)
 
     def add_subscriber(
         self,
@@ -204,7 +210,7 @@ class BaseBroker:
         self,
         coro: Coroutine[Any, Any, Any],
         *args: Any,
-        callbacks: List[Callable[[asyncio.Future], None]],
+        callbacks: List[Callable[[asyncio.Future], None]] = [],
         **kwargs: Any
     ) -> None:
         """Add a background task to the broker."""
@@ -274,12 +280,14 @@ class BaseBroker:
         try:
             connection = await self.wait(self._reconnect_timeout)
         except SubscriptionTimeout as e:
+            _LOGGER.warning("Failed to reconnect subscriber", exc_info=True)
             subscriber.stop(e)
         else:
             # Subscriber may have disconnected while we were waiting for broker
             # connection.
             if not subscriber.stopped:
                 self.connect_subscriber(subscriber, connection)
+                _LOGGER.info("Subscriber reconnected")
 
     async def _connect_subscriber(
         self,
@@ -299,7 +307,7 @@ class BaseBroker:
         channel = await connection.channel(publisher_confirms=False)
         try:
             await channel.exchange_declare(exchange=exchange, exchange_type="topic")
-            declare_ok = await channel.queue_declare(exclusive=True)
+            declare_ok = await channel.queue_declare(exclusive=True, auto_delete=True)
             
             await self.bind_subscriber(
                 subscriber=subscriber,
@@ -307,15 +315,16 @@ class BaseBroker:
                 declare_ok=declare_ok
             )
 
-            await channel.basic_consume(declare_ok.queue, on_message, no_ack=True)
+            consume_ok = await channel.basic_consume(declare_ok.queue, on_message, no_ack=True)
 
             if subscriber.stopped:
                 return
             assert subscriber.stopping is not None and not subscriber.stopping.done()
             
-            await asyncio.wait([channel.closing, subscriber.stopping])
+            await asyncio.wait([channel.closing, subscriber.stopping], return_when=asyncio.FIRST_COMPLETED)
         finally:
-            if not channel.is_closed:
+            if not channel.closing.done():
+                await channel.basic_cancel(consume_ok.consumer_tag)
                 await channel.close()
 
     def __del__(self):

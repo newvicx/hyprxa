@@ -1,14 +1,14 @@
 from collections.abc import Iterable, MutableMapping, Sequence
 from enum import Enum
-from typing import Any, Dict, Tuple, Type
+from typing import Any, Dict, List, Tuple, Type
 
 from fastapi import Request, WebSocket
-from pydantic import create_model, validator
+from pydantic import BaseModel, create_model, validator
 
 from hyprxa.auth import requires
 from hyprxa.base import BaseSubscriber, BaseSubscription
-from hyprxa.timeseries import (
-    BaseClient,
+from hyprxa.timeseries.base import BaseClient
+from hyprxa.timeseries.models import(
     AnySourceSubscription,
     AnySourceSubscriptionRequest,
     BaseSourceSubscriptionRequest,
@@ -132,6 +132,11 @@ def add_source(
 
 
 SOURCES = SourceMapping()
+
+
+class AvailableSources(BaseModel):
+    """The available sources for the application."""
+    sources: List[str]
 
 
 def source_to_str(cls, v: Enum) -> str:
