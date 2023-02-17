@@ -31,6 +31,7 @@ from hyprxa.timeseries.models import (
     SubscriptionMessage
 )
 from hyprxa.timeseries.sources import Source
+from hyprxa.util.asyncutils import add_event_loop_shutdown_callback
 
 
 
@@ -38,17 +39,102 @@ _LOGGER = logging.getLogger("hyprxa.timeseries.manager")
 
 
 class TimeseriesManager(BaseBroker):
+    """Manages a client connection to a data source.
+    
+    A `TimeseriesManager` receives standard formatted messages from subscribers
+    and broadcasts them out to subscribers via a routing key. The routing key
+    is a unique combination of the source name and the hash of the subscription.
+
+    Subscribers subscribe to a sequence of subscriptions and declare a queue on
+    RabbitMQ exchange. The queue is bound to all subscriptions via an analogous
+    routing key (source-hash) that the manager uses when publishing. Messages
+    are routed directly to subscribers from the RabbitMQ server.
+
+    The `TimeseriesManager` works cooperatively in a distributed context. It
+    maintains a global lock of all client subscriptions through a caching server
+    (Memcached). This ensures that two managers in two different processes do
+    not subscribe to the same subscription on their clients. This allows hyprxa
+    to scale horizontally without increasing load on the data source. However,
+    if there is a transient error in the caching server, there is a chance that
+    two managers may subscribe to the same subscription when the connection is
+    restored. In that case, duplicate messages will be posted to RabbitMQ and
+    routed to the subscribers. Therefore, it is the responsibility of the subscriber
+    to ensure it does not forward along duplicate messages. This can be done
+    easily assuming the client adheres to the hyprxa protocol...
+    
+        - Clients must only send messages containing unique timestamped values in
+        monotonically increasing order. `TimestampedValue`(s) must be sorted
+        within a message.
+
+    For a client, it is trivial to sort timestamped values (`TimestampValue` is
+    sortable) and guarentee uniqueness of timestamps. From there a client need
+    only store a reference to the last timestamp for that subscription.
+    On the next message it sorts and then filters to meet the uniqueness and
+    monotonically increasing requirements. Some sources may already meet this
+    requirement in which case the client may not need to do anything but it is
+    the responsibility of the client to ensure these requirements are met.
+
+    If a client is compliant, a subscriber need only keep a reference to the
+    last (i.e. most recent) timestamp for each subscription. If it receives
+    a message where the last timestamp is less than or equal to the last timestamp
+    of the previous message it discards the message.
+
+    If the connection to RabbitMQ is lost for any reason, subscribers will
+    not be dropped (at least not initially). The manager will attempt to re-establish
+    the connection while subscribers wait (up to `reconnect_seconds`). While the
+    manager is reconnecting to RabbitMQ, clients continue to operate as usual
+    and will buffer messages on the manager. When the connection is re-established,
+    subscribers will declare new queues and bind to the exchange. The manager
+    will pick up buffered messages and publish them. From the perspective of
+    the client, nothing happened. However, there is no guarentee that messages
+    buffered on the manager while reconnecting will reach the subscriber. This
+    is because there is no way to confirm all subscribers have re-binded to the
+    exchange in every process on every host. The manager will wait 2 seconds
+    before it publishes the first buffered message. If a subscriber has not
+    completed binding to the exchange, that message and all subsequent messages
+    will be lost until the subscriber binds to the exchange. In practice, 2
+    seconds is a long time to re-declare a queue and bind so while it is unlikely
+    that any messages will be lost we cannot guarentee they wont.
+
+    If the RabbitMQ connection is down for an extended period of time, the manager
+    will eventually unsubscribe from all subscriptions on the client and drop
+    any remaining subscribers. This happens after `max_failed` reconnect attempts.
+    However, the manager will continue to try and reconnect to RabbitMQ in the
+    background. Once it reconnects, it can begin accepting new subscribers.
+
+    Another interesting situation arises when the RabbitMQ connection is down
+    for an extended period. The client continues to operate in the background
+    and buffer messages from its connections. The data queue on a client is
+    bounded and can eventually fill up. At that point, connections will block
+    when trying to publish to the client. This ensures that messages do not pile
+    up indefinetely consuming more and more memory. This flow control also kicks
+    in if the manager is unable to connect to MongoDB for storing samples.
+
+    When a manager receives a message, it will store all timeseries samples within
+    that message in the timeseries database. For more information on storage
+    worker semantics, see the `MongoTimeseriesHandler`.
+
+    Args:
+        source: The data source to connect to.
+        lock: The lock instance connected to Memcached.
+        storage: The `MongoTimeseriesHandler` for storing timeseries samples.
+        max_buffered_message: The maximum number of messages that can be buffered
+            on the manager for the storage handler to process. The manager will
+            stop pulling messages from the client until the storage buffer is
+            drained.
+        max_failed: The maximum number of reconnect attempts to RabbitMQ before
+            dropping all client subscriptions and subscribers.
+    """
     def __init__(
         self,
         source: Source,
         lock: SubscriptionLock,
         storage: MongoTimeseriesHandler,
-        *args: Any,
         max_buffered_messages: int = 1000,
         max_failed: int = 15,
         **kwargs: Any
     ) -> None:
-        super().__init__(*args, **kwargs)
+        super().__init__(**kwargs)
         self._source = source
         self._lock = lock
         self._storage = storage
@@ -63,18 +149,21 @@ class TimeseriesManager(BaseBroker):
 
     @property
     def info(self) -> ManagerInfo:
-        storage_info = self._storage.worker.info if self._storage.worker else {}
+        """Return statistics on the manager instance. Useful for monitoring and
+        debugging.
+        """
+        storage_info = self._storage.worker.info if self._storage.worker else None
         return ManagerInfo(
             name=self.__class__.__name__,
             closed=self.closed,
             status=self.status,
             created=self.created,
             uptime=(datetime.utcnow() - self.created).total_seconds(),
-            active_subscribers=len(self._subscribers),
+            active_subscribers=len(self.subscribers),
             active_subscriptions=len(self.subscriptions),
-            subscriber_capacity=self.max_subscribers-len(self._subscribers),
-            total_subscribers_serviced=self._subscribers_serviced,
-            subscriber_info=[subscriber.info for subscriber in self._subscribers.values()],
+            subscriber_capacity=self.max_subscribers-len(self.subscribers),
+            total_subscribers_serviced=self.subscribers_serviced,
+            subscriber_info=[subscriber.info for subscriber in self.subscribers.values()],
             client_info=self._client.info,
             lock_info=self._lock.info,
             total_published_messages=self._total_published,
@@ -82,11 +171,8 @@ class TimeseriesManager(BaseBroker):
             storage_info=storage_info
         )
         
-    def start(self) -> None:
-        self._client, self._subscriber = self._source()
-        super().start()
-
     def close(self) -> None:
+        """Close the manager."""
         super().close()
         if self._client is not None:
             self._client.clear()
@@ -102,11 +188,32 @@ class TimeseriesManager(BaseBroker):
         except asyncio.QueueEmpty:
             pass
 
+    async def start(self) -> None:
+        """Start the manager."""
+        self._client, self._subscriber = self._source()
+        # If the event loop shutsdown, `run` may not be able to close the client
+        # so we add it as shutdown callback.
+        await add_event_loop_shutdown_callback(self._client.close)
+        await super().start()
+
     async def subscribe(self, subscriptions: Sequence[BaseSourceSubscription]) -> BaseSubscriber:
+        """Subscribe to a sequence of subscriptions on the manager.
+        
+        Args:
+            subscriptions: The subscriptions to subscriber to.
+        
+        Returns:
+            subscriber: The event subscriber instance.
+
+        Raises:
+            ManagerClosed: The manager is closed.
+            SubscriptionLimitError: The broker is maxed out on subscribers.
+            SubscriptionTimeout: Timed out waiting for rabbitmq connection.
+        """
         if self.closed:
             raise ManagerClosed()
-        if len(self._subscribers) >= self._max_subscribers:
-            raise SubscriptionLimitError(f"Max subscriptions reached ({self._max_subscribers})")
+        if len(self.subscribers) >= self.max_subscribers:
+            raise SubscriptionLimitError(f"Max subscriptions reached ({self.max_subscribers})")
         
         subscriptions = set(subscriptions)
 
@@ -152,6 +259,7 @@ class TimeseriesManager(BaseBroker):
         channel: Channel,
         declare_ok: commands.Queue.DeclareOk,
     ) -> None:
+        """Bind the queue to all subscriber subscriptions."""
         source = self._source.source
         binds = [
             channel.queue_bind(
@@ -177,7 +285,7 @@ class TimeseriesManager(BaseBroker):
             await self._client.close()
 
     async def manage_connection(self) -> None:
-        attempts = 0
+        """Manages RabbitMQ connection for manager."""
         connection: Connection = None
 
         try:
@@ -188,12 +296,11 @@ class TimeseriesManager(BaseBroker):
                 try:
                     await connection.connect()
                 except Exception:
-                    sleep = self.get_backoff(attempts)
+                    sleep = self.backoff.compute()
                     _LOGGER.warning("Connection failed, trying again in %0.2f", sleep, exc_info=True)
                     await asyncio.sleep(sleep)
-                    attempts += 1
                     
-                    if attempts >= self._max_failed:
+                    if self.backoff.failures >= self._max_failed:
                         _LOGGER.error(
                             "Dropping %i client subscriptions due to repeated "
                             "connection failures",
@@ -205,14 +312,27 @@ class TimeseriesManager(BaseBroker):
                             self._client.subscriptions,
                             callbacks=callbacks
                         )
+                        # Drop any remaining subscribers if the reconnect timeout
+                        # is very long.
+                        for fut in self.subscribers.keys(): fut.cancel()
                     
                     continue
                 
                 else:
-                    attempts = 0
                     self.set_connection(connection)
                 
                 try:
+                    # We need to remove the connection as soon as its closed.
+                    # In testing, there was a race condition that occurred where
+                    # the subscriber reconnect process would kick off before
+                    # exiting this context and removing the connection. The
+                    # manager state would still be 'ready' but the connection
+                    # was closed. So the reconnect coroutine would immediately
+                    # assume the connection was ready again and proceed. It would
+                    # then check the connection, find it was closed, and fail.
+                    # It was all dependant on how the loop scheduled the callbacks.
+                    # Removing it as callback to the `closing` future resolves
+                    # the issue.
                     connection.closing.add_done_callback(lambda _: self.remove_connection())
                     async with anyio.create_task_group() as tg:
                         tg.start_soon(self._publish_messages, connection, self.exchange)
@@ -227,7 +347,7 @@ class TimeseriesManager(BaseBroker):
                         await connection.close(timeout=2)
                     _LOGGER.warning("Error in manager", exc_info=True)
                 
-                sleep = self.get_backoff(0)
+                sleep = self.backoff.compute()
                 _LOGGER.warning(
                     "Manager unavailable, attempting to reconnect in %0.2f seconds",
                     sleep,
@@ -249,15 +369,15 @@ class TimeseriesManager(BaseBroker):
         # subscribers is broken. The subscribers will wait for a new connection
         # and then re-declare all queues and bindings. All queues declared are
         # temporary for obvious reasons so when we have interruptions, the
-        # subscribers have to race to re-declare their queues before any events
-        # are published otherwise those events will not be routed and will be lost.
+        # subscribers have to race to re-declare their queues before any messages
+        # are published otherwise those messages will not be routed and will be lost.
         
         # If we only had to worry about subscribers in a single process, we could
         # wait on the declarations before publishing anything. But, when we have
         # multiple processes spanning potentially multiple hosts, there is no
         # way to confirm all subscriber links have been re-established. So
         # instead, all we do is wait a couple of seconds. This should give the
-        # subscriber enough time re-establish their link to the broker before
+        # subscribers enough time re-establish their link to the broker before
         # anything is published. However, if it takes longer than the waiting
         # period to re-declare the queues and bindings, events will be lost.
         await asyncio.sleep(2)
@@ -311,6 +431,25 @@ class TimeseriesManager(BaseBroker):
                 else:
                     _LOGGER.debug("Releasing %i locks", len(subscriptions))
 
+                # It is okay if this fails due to a transient error. The client
+                # subscriptions have been dropped so their locks will not be
+                # extended by this process anymore and will eventually expire
+                # on the caching server.
+
+                # However, there is small potential for data loss.
+                # There at most a TTL gap between the time `release` fails to
+                # the actual release due to expiration on the server. In that
+                # TTL, another subscriber in a different process can subscribe
+                # to the unreleased subscription. Assuming that process does not
+                # also experience a transient error, the manager will try to
+                # acquire the lock and see it is already held and (incorrectly)
+                # assume the data is being streamed elsewhere. In actuality that
+                # data is not being streamed. Therefore we have a window where
+                # a subscriber expects to receive data it will never get. This
+                # is, at most, 2.5 TTL. When the manager in the other process
+                # polls its subscribers against the caching server, it will see
+                # that client lock is no longer held and attempt to subscribe
+                # on its own client.
                 await self._lock.release(subscriptions)
 
     async def _extend_client_subscriptions(self) -> None:
@@ -355,10 +494,31 @@ class TimeseriesManager(BaseBroker):
             if subscriptions:
                 not_subscribed = await self._lock.subscriber_poll(subscriptions)
                 if not_subscribed:
+                    # This is where we have a chance for duplicate subscriptions
+                    # in multiple processes. For polling operations, if a transient
+                    # error occurs, we assume the subscription is needed and we
+                    # stream the data. If the caching server goes down temporarily,
+                    # all locks will be lost (or expire if there is some persistence).
+                    # When the server becomes available, there is race between
+                    # the process which owns a client subscription to re-acquire
+                    # its lock (by extending) and the process which has a subscriber
+                    # trying to stream data. If the process which does not own the
+                    # client subscription goes first, it will poll the caching
+                    # server and see that no process is streaming the subscription
+                    # it wants. It will acquire a lock and subscribe on its client.
+                    # In the meantime, the process which owned the client subscription
+                    # will just continue to extend its lock not knowing that the
+                    # other process is also streaming the same subscription. This
+                    # is why subscribers must be the final gatekeeper for duplicate
+                    # data. If clients follow the protocol and ensure data is
+                    # sorted by timestamp it is trivial for a subscribers to just
+                    # look at the last timestamp in a message and ensure they only
+                    # forward messages where the timestamp is greater than the
+                    # last timestamp they saw.
                     try:
                         await self._subscribe(not_subscribed)
                     except SubscriptionError:
-                        for fut, subscriber in self._subscribers.items():
+                        for fut, subscriber in self.subscribers.items():
                             if not_subscribed.difference(subscriber.subscriptions) != not_subscribed:
                                 fut.cancel()
                                 _LOGGER.warning(

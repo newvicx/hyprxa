@@ -1,20 +1,26 @@
 import logging
 
-from fastapi import Request, status
+from fastapi import status
 from fastapi.responses import JSONResponse
-from pymongo.errors import PyMongoError
+from pymongo.errors import (
+    AutoReconnect,
+    WaitQueueTimeoutError,
+    PyMongoError
+)
+from starlette.requests import HTTPConnection
 
-from hyprxa.base import (
+from hyprxa.base.exceptions import (
     BrokerClosed,
     SubscriptionLimitError,
     SubscriptionTimeout
 )
+from hyprxa.caching.exceptions import CacheError
 from hyprxa.exceptions import NotConfiguredError
-from hyprxa.timeseries import (
+from hyprxa.timeseries.exceptions import (
     ClientSubscriptionError,
     SubscriptionLockError
 )
-from hyprxa.util.mongo import ServerUnavailable
+from hyprxa.util.mongo import DatabaseUnavailable
 
 
 
@@ -22,10 +28,11 @@ _LOGGER = logging.getLogger("hyprxa.exceptions")
 
 
 async def handle_NotConfiguredError(
-    request: Request,
+    connection: HTTPConnection,
     exc: NotConfiguredError
 ) -> JSONResponse:
-    _LOGGER.warning(f"Error in {request.path_params}", exc_info=exc)
+    """Exception handler for `NotConfiguredError`. Return 501 response."""
+    _LOGGER.warning(f"Error in {connection.path_params}", exc_info=exc)
     return JSONResponse(
         status_code=status.HTTP_501_NOT_IMPLEMENTED,
         content={"detail": str(exc)}
@@ -33,21 +40,24 @@ async def handle_NotConfiguredError(
 
 
 async def handle_PyMongoError(
-    request: Request,
+    connection: HTTPConnection,
     exc: PyMongoError
 ) -> JSONResponse:
-    _LOGGER.error(f"Error in {request.path_params}", exc_info=exc)
+    """Exception handler for `PyMongoError`. Return 500 response."""
+    _LOGGER.error(f"Error in {connection.path_params}", exc_info=exc)
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content={"detail": "Error in application database."}
+        content={"detail": "Error in application database. Contact an administrator."}
     )
 
 
-async def handle_MongoUnavailable(
-    request: Request,
-    exc: ServerUnavailable
+async def handle_DatabaseUnavailable(
+    connection: HTTPConnection,
+    exc: DatabaseUnavailable | AutoReconnect | WaitQueueTimeoutError
 ) -> JSONResponse:
-    _LOGGER.error(f"Error in {request.path_params}", exc_info=exc)
+    """Exception handler for `DatabaseUnavailable`, `AutoReconnect`,
+    `WaitQueueTimeoutError`. Return 503 response."""
+    _LOGGER.error(f"Error in {connection.path_params}", exc_info=exc)
     return JSONResponse(
         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
         content={"detail": "Application database is unavailable."},
@@ -56,10 +66,11 @@ async def handle_MongoUnavailable(
 
 
 async def handle_BrokerClosed(
-    request: Request,
+    connection: HTTPConnection,
     exc: BrokerClosed
 ) -> JSONResponse:
-    _LOGGER.error(f"Error in {request.path_params}", exc_info=exc)
+    """Exception handler for `BrokerClosed`. Return 500 response."""
+    _LOGGER.error(f"Error in {connection.path_params}", exc_info=exc)
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={"detail": "Broker is closed, the service must be restarted. Contact an administrator."}
@@ -67,10 +78,12 @@ async def handle_BrokerClosed(
 
 
 async def handle_retryable_SubscriptionError(
-    request: Request,
+    connection: HTTPConnection,
     exc: SubscriptionLimitError | SubscriptionLockError | SubscriptionTimeout
 ) -> JSONResponse:
-    _LOGGER.error(f"Error in {request.path_params}", exc_info=exc)
+    """Exception handler for `SubscriptionLimitError`, `SubscriptionLockError`,
+    and `SubscriptionTimeout`. Return 503 response."""
+    _LOGGER.error(f"Error in {connection.path_params}", exc_info=exc)
     return JSONResponse(
         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
         content={"detail": "Broker is unavailable."},
@@ -79,11 +92,24 @@ async def handle_retryable_SubscriptionError(
 
 
 async def handle_ClientSubscriptionError(
-    request: Request,
+    connection: HTTPConnection,
     exc: ClientSubscriptionError
 ) -> JSONResponse:
-    _LOGGER.error(f"Error in {request.path_params}", exc_info=exc)
+    """Exception handler for `ClientSubscriptionError`. Return 500 response."""
+    _LOGGER.error(f"Error in {connection.path_params}", exc_info=exc)
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={"detail": str(exc)}
+    )
+
+
+async def handle_CacheError(
+    connection: HTTPConnection,
+    exc: CacheError
+) -> JSONResponse:
+    """Exception handler for `CacheError`. Return 500 response."""
+    _LOGGER.error(f"Error in {connection.path_params}", exc_info=exc)
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={"detail": "Error in caching server. Contact an adminstrator."}
     )

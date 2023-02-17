@@ -93,7 +93,7 @@ def split_range(
     return start_times, end_times
 
 
-def get_timestamp_index(data: List[Dict[str, Any]]) -> List[str]:
+def get_timestamp_index(data: List[Dict[str, Any] | None]) -> List[str]:
     """Create a single, sorted timestamp index from a chunk of timeseries
     data potentially containing duplicate timestamps.
     
@@ -106,12 +106,16 @@ def get_timestamp_index(data: List[Dict[str, Any]]) -> List[str]:
 
 
 def iter_timeseries_rows(
-    index: List[str],
-    data: List[Dict[str, List[Any]]],
+    index: List[str | None],
+    data: List[Dict[str, List[Any]] | None],
     timezone: str | None = None
 ) -> Iterable[TimeseriesRow]:
     """Iterate a collection of timeseries data row by row and produce rows
     which have data aligned on a common timestamp.
+
+    This will also handle timezone conversion. If a timezone is specified, it
+    is assumed we are converting from UTC to the timezone. The returned timestamps
+    are always timezone unaware.
 
     Note: The data must be in monotonically increasing order for this to work
     correctly.

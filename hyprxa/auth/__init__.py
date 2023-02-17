@@ -1,5 +1,5 @@
 from .base import BaseAuthenticationBackend
-from .models import BaseUser, Token, TokenHandler
+from .models import BaseUser
 from .protocols import AuthenticationClient
 from .scopes import requires
 
@@ -11,8 +11,6 @@ __all__ = [
     "BaseAuthenticationBackend",
     "AuthError",
     "BaseUser",
-    "Token",
-    "TokenHandler",
     "AuthenticationClient",
     "requires",
 ]

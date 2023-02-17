@@ -135,11 +135,6 @@ class BaseClient:
             total_connections_serviced=self._connections_serviced,
             connection_info=[connection.info for connection in self._connections.values()]
         )
-    
-    @property
-    def source(self) -> str:
-        """Return the common name of the source the client is connecting to."""
-        raise NotImplementedError()
 
     @property
     def subscriptions(self) -> Set[BaseSourceSubscription]:

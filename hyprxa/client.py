@@ -9,7 +9,7 @@ import pathlib
 import sys
 import tempfile
 import time
-from collections.abc import AsyncGenerator, Awaitable, Mapping
+from collections.abc import AsyncIterable, Awaitable,  Iterable, Mapping
 from contextlib import AsyncExitStack, ExitStack
 from datetime import datetime
 from typing import Any, Callable, Dict, Set, TextIO, Tuple, Type
@@ -34,7 +34,7 @@ from httpx import (
     WriteError,
     URL
 )
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel
 
 from hyprxa.auth import BaseUser
 from hyprxa.events import (
@@ -331,16 +331,12 @@ class HyprxaClient:
         self,
         topic: str,
         routing_key: str | None = None
-    ) -> AsyncGenerator[EventDocument, None]:
+    ) -> Iterable[EventDocument]:
         """Send a GET request to /events/stream/{topic} and stream events."""
         params = QueryParams(routing_key=routing_key)
         path = f"/events/stream/{topic}"
         for data in self._sse("GET", path, params):
-            yield Event(
-                topic=topic,
-                routing_key=routing_key,
-                payload=json.loads(data)
-            )
+            yield EventDocument(**data)
 
     def download_events(
         self,
@@ -390,18 +386,11 @@ class HyprxaClient:
         params = QueryParams(q=q)
         return self._get("/timeseries/unitop/search", UnitOpQueryResult, params=params)
     
-    def stream_messages(self, unitop: str) -> AsyncGenerator[SubscriptionMessage, None]:
+    def stream_messages(self, unitop: str) -> Iterable[SubscriptionMessage]:
         """Send a GET request to /timeseries/stream/{unitop} and stream data."""
         path = f"/timeseries/stream/{unitop}"
         for data in self._sse("GET", path):
-            try:
-                yield SubscriptionMessage.parse_raw(data)
-            except ValidationError:
-                _LOGGER.warning(
-                    "Failed to parse subscription message for %s",
-                    unitop,
-                    extra={"data": data}
-                )
+            yield SubscriptionMessage.parse_obj(data)
 
     def download_data(
         self,
@@ -460,16 +449,16 @@ class HyprxaClient:
         method: str,
         path: str,
         params: QueryParams | None = None,
-        json: Any | None = None
-    ) -> AsyncGenerator[str, None]:
+        json_: Any | None = None
+    ) -> Iterable[Any]:
         """Handle SSE endpoints yielding 'data' events as bytes."""
         parser = SSEParser(_LOGGER)
-        with self._client.stream(method, path, params=params, json=json) as response:
+        with self._client.stream(method, path, params=params, json=json_) as response:
             for data in response.iter_bytes():
                 parser.feed(data)
                 for event in parser.events():
                     if event.event == "message":
-                        yield event.data
+                        yield json.loads(event.data)
 
     def _download_to_csv(
         self,
@@ -643,16 +632,12 @@ class HyprxaAsyncClient:
         self,
         topic: str,
         routing_key: str | None = None
-    ) -> AsyncGenerator[EventDocument, None]:
+    ) -> AsyncIterable[EventDocument]:
         """Send a GET request to /events/stream/{topic} and stream events."""
         params = QueryParams(routing_key=routing_key)
         path = f"/events/stream/{topic}"
         async for data in self._sse("GET", path, params):
-            yield Event(
-                topic=topic,
-                routing_key=routing_key,
-                payload=json.loads(data)
-            )
+            yield EventDocument(**data)
 
     async def download_events(
         self,
@@ -702,18 +687,11 @@ class HyprxaAsyncClient:
         params = QueryParams(q=q)
         return await self._get("/timeseries/unitop/search", UnitOpQueryResult, params=params)
     
-    async def stream_messages(self, unitop: str) -> AsyncGenerator[SubscriptionMessage, None]:
+    async def stream_messages(self, unitop: str) -> AsyncIterable[SubscriptionMessage]:
         """Send a GET request to /timeseries/stream/{unitop} and stream data."""
         path = f"/timeseries/stream/{unitop}"
         async for data in self._sse("GET", path):
-            try:
-                yield SubscriptionMessage.parse_raw(data)
-            except ValidationError:
-                _LOGGER.warning(
-                    "Failed to parse subscription message for %s",
-                    unitop,
-                    extra={"data": data}
-                )
+            yield SubscriptionMessage.parse_obj(data)
 
     async def download_data(
         self,
@@ -772,16 +750,16 @@ class HyprxaAsyncClient:
         method: str,
         path: str,
         params: QueryParams | None = None,
-        json: Any | None = None
-    ) -> AsyncGenerator[str, None]:
+        json_: Any | None = None
+    ) -> AsyncIterable[Any]:
         """Handle SSE endpoints yielding 'data' events as bytes."""
         parser = SSEParser(_LOGGER)
-        async with self._client.stream(method, path, params=params, json=json) as response:
+        async with self._client.stream(method, path, params=params, json=json_) as response:
             async for data in response.aiter_bytes():
                 parser.feed(data)
                 for event in parser.events():
                     if event.event == "message":
-                        yield event.data
+                        yield json.loads(event.data)
 
     async def _download_to_csv(
         self,

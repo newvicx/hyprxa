@@ -25,6 +25,9 @@ _LOGGER = logging.getLogger("hyprxa.base")
 
 class BaseBroker:
     """Data broker backed by a RabbitMQ exchange.
+
+    `BaseBroker` implements the common plumbing for both the `EventBus` and
+    `TimeseriesManager`.
     
     Args:
         factory: A callable that returns an `aiormq.Connection`.
@@ -77,6 +80,11 @@ class BaseBroker:
         atexit.register(self.close)
 
     @property
+    def backoff(self) -> EqualJitterBackoff:
+        """Returns the backoff instance for the broker."""
+        return self._backoff
+
+    @property
     def closed(self) -> bool:
         """`True` if the broker is closed."""
         return self._runner is None or self._runner.done()
@@ -104,6 +112,16 @@ class BaseBroker:
         return BrokerStatus.DISCONNECTED.value
 
     @property
+    def subscribers(self) -> Dict[asyncio.Future, BaseSubscriber]:
+        """Returns all broker subscribers."""
+        return self._subscribers
+
+    @property
+    def subscribers_serviced(self) -> int:
+        """Returns the number of subscribers serviced by this broker."""
+        return self._subscribers_serviced
+
+    @property
     def subscriptions(self) -> Set[BaseSubscription]:
         """Return a set of the subscriptions from all subscribers."""
         subscriptions = set()
@@ -112,15 +130,6 @@ class BaseBroker:
                 subscriptions.update(subscriber.subscriptions)
         return subscriptions
 
-    def start(self) -> None:
-        """Start the broker."""
-        if not self.closed:
-            return
-
-        runner: asyncio.Task = Context().run(self._loop.create_task, self.run())
-        runner.add_done_callback(lambda _: self._loop.create_task(self.close()))
-        self._runner = runner
-
     def close(self) -> None:
         """Close the broker."""
         for fut in itertools.chain(self._subscribers.keys(), self._background):
@@ -128,6 +137,15 @@ class BaseBroker:
         fut, self._runner = self._runner, None
         if fut is not None:
             fut.cancel()
+
+    async def start(self) -> None:
+        """Start the broker."""
+        if not self.closed:
+            return
+
+        runner: asyncio.Task = Context().run(self._loop.create_task, self.run())
+        runner.add_done_callback(lambda _: self._loop.create_task(self.close()))
+        self._runner = runner
 
     async def subscribe(self, subscriptions: Sequence[BaseSubscription]) -> BaseSubscriber:
         """Subscribe to a sequence of subscriptions on the broker.
@@ -255,12 +273,6 @@ class BaseBroker:
         self._connection = connection
         self._ready.set()
         _LOGGER.debug("Connection established")
-
-    def get_backoff(self, attempts: int) -> float:
-        """Get the backoff timeout based on the number of connection attempts
-        to RabbitMQ.
-        """
-        return self._backoff.compute(attempts)
 
     async def wait(self, timeout: float | None = None) -> Connection:
         """Wait for broker connection to be ready."""

@@ -99,6 +99,11 @@ class HyprxaSettings(BaseSettings):
         provided, a `NotConfiguredError` will be raised when trying to access a
         resource that requires read scopes. Defaults to `False`""")
     )
+    token_path: str = Field(
+        default="/token",
+        description=format_docstring("""The path to the acquire an access token.
+        Defaults to '/token'""")
+    )
 
     class Config:
         env_file=".env"
@@ -111,13 +116,12 @@ class MongoSettings(BaseSettings):
         description=format_docstring("""The connection uri to the MongoDB server.
         Defaults to 'mongodb://localhost:27017/'""")
     )
-    heartbeat: conint(ge=1000) = Field(
+    heartbeat: conint(gt=0) = Field(
         default=20_000,
         description=format_docstring("""The number of milliseconds between
-        periodic server checks, or `None` to accept the default frequency for
-        `MongoClient`. Defaults to `None`""")
+        periodic server checks. Defaults to `20000` (20 seconds)""")
     )
-    server_selection_timeout: conint(ge=1000) = Field(
+    server_selection_timeout: conint(gt=0) = Field(
         default=10_000,
         description=format_docstring("""Controls how long (in milliseconds) the
         driver will wait to find an available, appropriate server to carry out a
@@ -125,27 +129,27 @@ class MongoSettings(BaseSettings):
         operations may be carried out, each controlled by `connect_timeout`.
         Defaults to `10000` (10 seconds).""")
     )
-    connect_timeout: conint(ge=1000) = Field(
+    connect_timeout: conint(gt=0) = Field(
         default=10_000,
         description=format_docstring("""Controls how long (in milliseconds) the
         driver will wait during server monitoring when connecting a new socket
-        to a server before concluding the server is unavailable. 0 means no
-        timeout. Defaults to `10000` (10 seconds)""")
+        to a server before concluding the server is unavailable. Defaults to
+        `10000` (10 seconds)""")
     )
-    socket_timeout: conint(ge=1000) = Field(
+    socket_timeout: conint(gt=0) = Field(
         default=10_000,
         description=format_docstring("""Controls how long (in milliseconds) the
         driver will wait for a response after sending an ordinary (non-monitoring)
         database operation before concluding that a network error has occurred.
-        0 means no timeout. Defaults to `10000` (10 seconds)""")
+        Defaults to `10000` (10 seconds)""")
     )
-    timeout: conint(ge=1000) = Field(
+    timeout: conint(gt=0) = Field(
         default=10_000,
         description=format_docstring("""Controls how long (in milliseconds)
         the driver will wait when executing an operation (including retry
-        attempts) before raising a timeout error. Defaults to `10000`""")
+        attempts) before raising a timeout error. Defaults to `10000` (10 seconds)""")
     )
-    max_pool_size: conint(ge=10, le=100) = Field(
+    max_pool_size: conint(ge=0) = Field(
         default=25,
         description=format_docstring("""The maximum allowable number of concurrent
         connections to each connected server. Requests to a server will block if
@@ -212,23 +216,23 @@ class MemcachedSettings(BaseSettings):
         description=format_docstring("""A `host:port` string to Memcached server.
         Defaults to 'localhost:11211'""")
     )
-    connect_timeout: confloat(ge=1) = Field(
+    connect_timeout: confloat(gt=0) = Field(
         default=10,
         description=format_docstring("""Controls how long (in seconds) the driver
         will wait to connect a new socket to a server. Defaults to `10`""")
     )
-    timeout: confloat(ge=1) = Field(
+    timeout: confloat(gt=0) = Field(
         default=10,
         description=format_docstring("""Controls how long (in seconds) the driver
         will wait for send or recv calls on the socket connected to memcached.
         Defaults to `10`""")
     )
-    max_pool_size: conint(ge=3) = Field(
+    max_pool_size: conint(gt=0) = Field(
         default=6,
         description=format_docstring("""The maximum number of concurrent connections
-        to the memcached server per client. Defaults to `4`""")
+        to the memcached server per client. Defaults to `6`""")
     )
-    pool_idle_timeout: confloat(ge=10) = Field(
+    pool_idle_timeout: confloat(gt=10) = Field(
         default=60,
         description=format_docstring("""The time (in seconds) before an unused
         pool connection is discarded. Defaults to `60`""")
@@ -248,7 +252,7 @@ class MemcachedSettings(BaseSettings):
     def get_limiter(self) -> threading.Semaphore:
         """Configure a limiter from settings.
         
-        The limiter prevents `RuntimeError` in multithreaded contexts if more
+        The limiter prevents a `RuntimeError` in multithreaded contexts if more
         than `max_pool_size` threads try and get a connection from the pool
         concurrently. The limiter will block the thread if the limit is reached.
         """
@@ -261,9 +265,9 @@ class MemcachedSettings(BaseSettings):
 
 class SentrySettings(BaseSettings):
     enabled: bool = Field(
-        default=False,
+        default=True,
         description=format_docstring("""Controls whether the SDK is enabled for
-        this runtime. If enabled, `dsn` must be specified. Defaults to `False`""")
+        this runtime. If enabled, `dsn` must be specified. Defaults to `True`""")
     )
     dsn: AnyHttpUrl | None = Field(
         default=None,
@@ -277,7 +281,7 @@ class SentrySettings(BaseSettings):
         0% while 1 represents 100%). Events are picked randomly. Defaults to `1`""")
     )
     level: StrictStr = Field(
-        default="info",
+        default="INFO",
         description=format_docstring("""Controls the logging level to record for
         breadcrumbs. The Sentry Python SDK will record log records with a level
         higher than or equal to level as breadcrumbs. Inversely, the SDK
@@ -285,7 +289,7 @@ class SentrySettings(BaseSettings):
         Defaults to 'INFO'""")
     )
     event_level: StrictStr = Field(
-        default="error",
+        default="ERROR",
         description=format_docstring("""Controls the logging level to record for
         events. The Sentry Python SDK will report log records with a level higher
         than or equal to event_level as events. Defaults to 'ERROR'""")
@@ -444,32 +448,32 @@ class EventBusSettings(BaseSettings):
         description=format_docstring("""The exchange name to use for the event
         exchange. Defaults to 'hyprxa.exchange.events'""")
     )
-    max_subscribers: conint(ge=10) = Field(
+    max_subscribers: conint(gt=0) = Field(
         default=_BRKR["max_subscribers"].default,
         description=format_docstring("""The maximum number of concurrent
         subscribers which can run by a single event bus instance. Defaults to `{}`
         """.format(_BRKR["max_subscribers"].default))
     )
-    maxlen: conint(ge=25) = Field(
+    maxlen: conint(gt=0) = Field(
         default=_BRKR["maxlen"].default,
         description=format_docstring("""The maximum number of events that can
         buffered on a subscriber. If the buffer limit on a subscriber is
         reached, the oldest events will be evicted as new events are added.
         Defaults to `{}`""".format(_BRKR["maxlen"].default))
     )
-    max_buffered_events: conint(ge=100) = Field(
+    max_buffered_events: conint(gt=0) = Field(
         default=_EB["max_buffered_events"].default,
         description=format_docstring("""The maximum number of events that can
         be buffered on the event bus. If the limit is reached, the bus will refuse
         to enqueue any published events. Defaults to `{}""".format(_EB["max_buffered_events"].default))
     )
-    subscription_timeout: confloat(ge=1) = Field(
+    subscription_timeout: confloat(gt=0) = Field(
         default=_BRKR["subscription_timeout"].default,
         description=format_docstring("""The time to wait (in seconds) for the
         broker to be ready before rejecting the subscription request. Defaults
         to `{}`.""".format(_BRKR["subscription_timeout"].default))
     )
-    reconnect_timeout: confloat(ge=1) = Field(
+    reconnect_timeout: confloat(gt=0) = Field(
         default=_BRKR["reconnect_timeout"].default,
         description=format_docstring("""The time to wait (in seconds) for the
         broker to be ready before dropping an already connected subscriber.
@@ -518,7 +522,7 @@ class EventHandlerSettings(BaseSettings):
         description=format_docstring("""The time interval (in seconds) between
         document flushes to the database. Defaults to `{}`""".format(_MW["flush_interval"].default))
     )
-    buffer_size: conint(ge=10) = Field(
+    buffer_size: conint(gt=0) = Field(
         default=_MW["buffer_size"].default,
         description=format_docstring("""The maximum number of documents that
         can be buffered before flushing to the database. Defaults to `{}`
@@ -587,7 +591,7 @@ class UnitOpSettings(BaseSettings):
 
 
 class TimeseriesManagerSettings(BaseSettings):
-    lock_ttl: conint(ge=1, le=15) = Field(
+    lock_ttl: conint(gt=0, le=15) = Field(
         default=_LK["ttl"].default,
         description=format_docstring("""The time (in seconds) to acquire and
         extend subscription locks for. Defaults to `{}`""".format(_LK["ttl"].default))
@@ -597,33 +601,33 @@ class TimeseriesManagerSettings(BaseSettings):
         description=format_docstring("""The exchange name to use for the timeseries
         data exchange. Defaults to 'hyprxa.exchange.timeseries'""")
     )
-    max_subscribers: conint(ge=10) = Field(
+    max_subscribers: conint(gt=0) = Field(
         default=_BRKR["max_subscribers"].default,
         description=format_docstring("""The maximum number of concurrent
         subscribers which can run by a single event bus instance. Defaults to `{}`
         """.format(_BRKR["max_subscribers"].default))
     )
-    maxlen: conint(ge=25) = Field(
+    maxlen: conint(gt=0) = Field(
         default=_BRKR["maxlen"].default,
         description=format_docstring("""The maximum number of messages that can
         buffered on a subscriber. If the buffer limit on a subscriber is
         reached, the oldest messages will be evicted as new messages are added.
         Defaults to `{}`""".format(_BRKR["maxlen"].default))
     )
-    max_buffered_messages: conint(gt=100) = Field(
+    max_buffered_messages: conint(gt=0) = Field(
         default=_TM["max_buffered_messages"].default,
         description=format_docstring("""The maximum number of messages that can
         be buffered on the managers storage queue. If the limit is reached, the
         manager will stop processing messages from the client until the buffer
         drains. Defaults to `{}""".format(_TM["max_buffered_messages"].default))
     )
-    subscription_timeout: confloat(ge=1) = Field(
+    subscription_timeout: confloat(gt=0) = Field(
         default=_BRKR["subscription_timeout"].default,
         description=format_docstring("""The time to wait (in seconds) for the
         broker to be ready before rejecting the subscription request. Defaults
         to `{}`.""".format(_BRKR["subscription_timeout"].default))
     )
-    reconnect_timeout: confloat(ge=1) = Field(
+    reconnect_timeout: confloat(gt=0) = Field(
         default=_BRKR["reconnect_timeout"].default,
         description=format_docstring("""The time to wait (in seconds) for the
         broker to be ready before dropping an already connected subscriber.
@@ -682,7 +686,7 @@ class TimeseriesManagerSettings(BaseSettings):
 
 
 class TimeseriesHandlerSettings(BaseSettings):
-    flush_interval: confloat(ge=0) = Field(
+    flush_interval: confloat(gt=0) = Field(
         default=_MW["flush_interval"].default,
         description=format_docstring("""The time interval (in seconds) between
         document flushes to the database. Defaults to `{}`""".format(_MW["flush_interval"].default))
@@ -699,7 +703,7 @@ class TimeseriesHandlerSettings(BaseSettings):
         pending documents before removing the pending documents. Defaults to `{}`
         """.format(_MW["max_retries"].default))
     )
-    expire_after: conint(ge=3600) = Field(
+    expire_after: conint(gt=0) = Field(
         default=_TH["expire_after"].default,
         description=format_docstring("""The time (in seconds) to persist timeseries
         documents in the database. For more information see

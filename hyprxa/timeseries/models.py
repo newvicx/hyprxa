@@ -1,12 +1,13 @@
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import datetime
+from enum import Enum
 from typing import Any, Dict, List, Sequence, Set
 
-import pydantic
-from pydantic import Field, validator
+from pydantic import create_model, validator
 
-from hyprxa.base import BaseSubscription, BrokerInfo
+from hyprxa.base.models import BaseSubscription, BrokerInfo
+from hyprxa.timeseries.sources import _SOURCES
 from hyprxa.util.models import BaseModel
 
 
@@ -14,21 +15,6 @@ from hyprxa.util.models import BaseModel
 class BaseSourceSubscription(BaseSubscription):
     """Base model for timeseries subscriptions."""
     source: str
-
-
-class DroppedSubscriptions(BaseModel):
-    """Message for dropped subscriptions from a client to a manager."""
-    subscriptions: Set[BaseSourceSubscription | None]
-    error: Exception | None
-
-    class Config:
-        arbitrary_types_allowed=True
-
-    @validator("error")
-    def _is_exception(cls, v: Exception) -> Exception:
-        if v and not isinstance(v, Exception):
-            raise TypeError(f"Expected 'Exception', got {type(v)}")
-        return v
 
 
 class BaseSourceSubscriptionRequest(BaseModel):
@@ -44,6 +30,44 @@ class BaseSourceSubscriptionRequest(BaseModel):
     ) -> List[BaseSourceSubscription]:
         subscriptions = set(subscriptions)
         return sorted(subscriptions)
+
+
+class AnySourceSubscription(BaseSourceSubscription):
+    """Unconstrained subscription model to a data source."""
+    class Config:
+        extra="allow"
+
+
+class AnySourceSubscriptionRequest(BaseSourceSubscriptionRequest):
+    """Model for sequence of subscriptions to any number of data sources."""
+    subscriptions: Sequence[AnySourceSubscription]
+
+    def group(self) -> Dict[str, List[AnySourceSubscription]]:
+        """Group subscriptions together by source."""
+        sources = set([subscription.source for subscription in self.subscriptions])
+        groups = {}
+        for source in sources:
+            group = [
+                subscription for subscription in self.subscriptions
+                if subscription.source == source
+            ]
+            groups[source] = group
+        return groups
+
+
+class DroppedSubscriptions(BaseModel):
+    """Message for dropped subscriptions from a client to a manager."""
+    subscriptions: Set[BaseSourceSubscription | None]
+    error: Exception | None
+
+    class Config:
+        arbitrary_types_allowed=True
+
+    @validator("error")
+    def _is_exception(cls, v: Exception) -> Exception:
+        if v and not isinstance(v, Exception):
+            raise TypeError(f"Expected 'Exception', got {type(v)}")
+        return v
 
 
 class TimestampedValue(BaseModel):
@@ -94,54 +118,6 @@ class SubscriptionMessage(BaseModel):
         )
 
 
-class AnySourceSubscription(BaseSourceSubscription):
-    """Unconstrained subscription model to a data source."""
-    class Config:
-        extra="allow"
-
-
-class AnySourceSubscriptionRequest(BaseSourceSubscriptionRequest):
-    """Model for sequence of subscriptions to any number of data sources."""
-    subscriptions: Sequence[AnySourceSubscription]
-
-    def group(self) -> Dict[str, List[AnySourceSubscription]]:
-        """Group subscriptions together by source."""
-        sources = set([subscription.source for subscription in self.subscriptions])
-        groups = {}
-        for source in sources:
-            group = [
-                subscription for subscription in self.subscriptions
-                if subscription.source == source
-            ]
-            groups[source] = group
-        return groups
-
-
-class UnitOp(BaseModel):
-    """Model for a unit-op. A unit-op is a logical grouping of timeseries subscriptions.
-    """
-    name: str
-    data_mapping: Dict[str, AnySourceSubscription]
-    meta: Dict[str, Any]
-
-
-@dataclass
-class UnitOpDocument:
-    """Document model for a UnitOp."""
-    name: str
-    data_mapping: Dict[str, AnySourceSubscription]
-    meta: Dict[str, Any]
-    modified_by: str
-    modified_at: datetime
-
-
-ValidatedUnitOpDocument = pydantic.dataclasses.dataclass(UnitOpDocument)
-
-class UnitOpQueryResult(BaseModel):
-    """Result set of unit-op query."""
-    items: List[UnitOpDocument | None] = Field(default_factory=list)
-
-
 class ConnectionInfo(BaseModel):
     """Model for connection statistics."""
     name: str
@@ -182,3 +158,32 @@ class ManagerInfo(BrokerInfo):
     total_published_messages: int
     total_stored_messages: int
     storage_info: Dict[str, Any]
+
+
+def source_to_str(_, v: Enum) -> str:
+    """Convert source enum to string."""
+    return v.value
+
+
+ValidatedBaseSourceSubscription = lambda: create_model(
+    "BaseSourceSubscription",
+    source=(_SOURCES.compile_sources(), ...),
+    __base__=BaseSubscription,
+    __validators__={"_source_converter": validator("source", allow_reuse=True)(source_to_str)}
+)
+ValidatedAnySourceSubscription = lambda: create_model(
+    "AnySourceSubscription",
+    source=(_SOURCES.compile_sources(), ...),
+    __base__=AnySourceSubscription,
+    __validators__={"_source_converter": validator("source", allow_reuse=True)(source_to_str)}
+)
+ValidatedBaseSourceSubscriptionRequest = lambda model: create_model(
+    "BaseSourceSubscriptionRequest",
+    subscriptions=(Sequence[model], ...),
+    __base__=BaseSourceSubscriptionRequest
+)
+ValidatedAnySourceSubscriptionRequest = lambda model: create_model(
+    "AnySourceSubscriptionRequest",
+    subscriptions=(Sequence[model], ...),
+    __base__=AnySourceSubscriptionRequest
+)

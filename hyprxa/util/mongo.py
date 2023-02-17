@@ -10,12 +10,11 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from pymongo import MongoClient
 from pymongo.errors import (
     AutoReconnect,
-    ConnectionFailure,
     PyMongoError,
-    ServerSelectionTimeoutError,
     WaitQueueTimeoutError
 )
 
+from hyprxa.exceptions import HyprxaError
 from hyprxa.util.defaults import DEFAULT_DATABASE
 
 
@@ -23,7 +22,7 @@ from hyprxa.util.defaults import DEFAULT_DATABASE
 _LOGGER = logging.getLogger("hyprxa.util")
 
 
-class ServerUnavailable(PyMongoError):
+class DatabaseUnavailable(HyprxaError):
     """Raised when we are unable to ping the MongoDB server."""
 
 
@@ -156,7 +155,7 @@ class MongoWorker:
             ) as client:
                 pong = client.admin.command("ping")
                 if not pong.get("ok"):
-                    raise ServerUnavailable("Unable to ping server.")
+                    raise DatabaseUnavailable("Unable to ping server.")
                 self._running_event.set()
                 while not self._stop_event.is_set():
                     self._flush_event.wait(self._flush_interval)
@@ -225,7 +224,7 @@ class SessionManager:
                 
                 pong = await self._client.admin.command("ping")
                 if not pong.get("ok"):
-                    raise ServerUnavailable("Unable to ping server.")
+                    raise DatabaseUnavailable("Unable to ping server.")
                 
                 yield self._client
             except WaitQueueTimeoutError:
@@ -242,7 +241,7 @@ class SessionManager:
                     exc_info=True
                 )
                 raise
-            except (ConnectionFailure, ServerSelectionTimeoutError, ServerUnavailable):
+            except (PyMongoError, DatabaseUnavailable):
                 self._count = 0
                 _LOGGER.warning("Error in database client", exc_info=True)
                 raise

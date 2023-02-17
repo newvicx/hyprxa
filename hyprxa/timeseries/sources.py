@@ -1,19 +1,12 @@
 from collections.abc import Iterable, MutableMapping, Sequence
 from enum import Enum
-from typing import Any, Dict, List, Tuple, Type
+from typing import Any, Dict, Tuple, Type
 
 from fastapi import Request, WebSocket
-from pydantic import BaseModel, create_model, validator
 
-from hyprxa.auth import requires
-from hyprxa.base import BaseSubscriber, BaseSubscription
+from hyprxa.auth.scopes import requires
+from hyprxa.base.subscriber import BaseSubscriber
 from hyprxa.timeseries.base import BaseClient
-from hyprxa.timeseries.models import(
-    AnySourceSubscription,
-    AnySourceSubscriptionRequest,
-    BaseSourceSubscriptionRequest,
-    UnitOp
-)
 
 
 
@@ -90,6 +83,9 @@ class SourceMapping(MutableMapping):
 
     def __len__(self) -> int:
         return len(self._sources)
+
+
+_SOURCES = SourceMapping()
     
 
 def add_source(
@@ -128,46 +124,4 @@ def add_source(
         client_args=client_args,
         client_kwargs=client_kwargs
     )
-    SOURCES.register(s)
-
-
-SOURCES = SourceMapping()
-
-
-class AvailableSources(BaseModel):
-    """The available sources for the application."""
-    sources: List[str]
-
-
-def source_to_str(cls, v: Enum) -> str:
-    """Convert source enum to string."""
-    return v.value
-
-
-ValidatedBaseSourceSubscription = lambda: create_model(
-    "BaseSourceSubscription",
-    source=(SOURCES.compile_sources(), ...),
-    __base__=BaseSubscription,
-    __validators__={"_source_converter": validator("source", allow_reuse=True)(source_to_str)}
-)
-ValidatedAnySourceSubscription = lambda: create_model(
-    "AnySourceSubscription",
-    source=(SOURCES.compile_sources(), ...),
-    __base__=AnySourceSubscription,
-    __validators__={"_source_converter": validator("source", allow_reuse=True)(source_to_str)}
-)
-ValidatedBaseSourceSubscriptionRequest = lambda model: create_model(
-    "BaseSourceSubscriptionRequest",
-    subscriptions=(Sequence[model], ...),
-    __base__=BaseSourceSubscriptionRequest
-)
-ValidatedAnySourceSubscriptionRequest = lambda model: create_model(
-    "AnySourceSubscriptionRequest",
-    subscriptions=(Sequence[model], ...),
-    __base__=AnySourceSubscriptionRequest
-)
-ValidatedUnitOp = lambda model: create_model(
-    "UnitOp",
-    data_mapping=(Dict[str, model], ...),
-    __base__=UnitOp
-)
+    _SOURCES.register(s)

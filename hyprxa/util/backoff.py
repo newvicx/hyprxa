@@ -1,34 +1,39 @@
-from abc import ABC, abstractmethod
 import random
 
 
 
-class AbstractBackoff(ABC):
+class BaseBackoff:
     """Backoff interface"""
+    def __init__(self) -> None:
+        self.failures = 0
 
     def reset(self):
         """Reset internal state before an operation."""
-        pass
+        self.failures = 0
 
-    @abstractmethod
-    def compute(self, failures: int):
+    def compute(self):
         """Compute backoff in seconds upon failure."""
-        pass
+        raise NotImplementedError()
 
 
-class EqualJitterBackoff(AbstractBackoff):
+class EqualJitterBackoff(BaseBackoff):
     """Equal jitter backoff upon failure."""
 
     def __init__(self, cap: float, initial: float):
         self.cap=cap
         self.initial = initial
+        super().__init__()
 
-    def compute(self, failures: int):
-        temp = min(self.cap, self.initial * 2**failures) / 2
+    def reset(self):
+        super().reset()
+
+    def compute(self):
+        self.failures += 1
+        temp = min(self.cap, self.initial * 2**self.failures) / 2
         return temp + random.uniform(0, temp)
 
 
-class DecorrelatedJitterBackoff(AbstractBackoff):
+class DecorrelatedJitterBackoff(BaseBackoff):
     """Decorrelated jitter backoff upon failure."""
 
     def __init__(self, cap: float, initial: float):
@@ -39,40 +44,49 @@ class DecorrelatedJitterBackoff(AbstractBackoff):
     def reset(self):
         self._previous_backoff = 0
 
-    def compute(self, failures: int):
+    def compute(self):
         max_backoff = max(self.initial, self._previous_backoff * 3)
         temp = random.uniform(self.initial, max_backoff)
         self._previous_backoff = min(self.cap, temp)
         return self._previous_backoff
 
 
-class ConstantBackoff(AbstractBackoff):
+class ConstantBackoff(BaseBackoff):
     """Constant backoff upon failure."""
 
     def __init__(self, backoff: float):
         self.backoff = backoff
+        super().__init__()
 
-    def compute(self, _: int):
+    def compute(self):
         return self.backoff
 
 
-class ExponentialBackoff(AbstractBackoff):
+class ExponentialBackoff(BaseBackoff):
     """Exponential backoff upon failure."""
 
     def __init__(self, cap: float, initial: float):
         self.cap=cap
         self.initial = initial
 
-    def compute(self, failures: int):
-        return min(self.cap, self.initial * 2**failures)
+    def reset(self):
+        super().reset()
+    
+    def compute(self):
+        self.failures += 1
+        return min(self.cap, self.initial * 2**self.failures)
 
 
-class FullJitterBackoff(AbstractBackoff):
+class FullJitterBackoff(BaseBackoff):
     """Full jitter backoff upon failure."""
 
     def __init__(self, cap: float, initial: float):
         self.cap=cap
         self.initial = initial
 
-    def compute(self, failures: int):
-        return random.uniform(0, min(self.cap, self.initial * 2**failures))
+    def reset(self):
+        super().reset()
+
+    def compute(self):
+        self.failures += 1
+        return random.uniform(0, min(self.cap, self.initial * 2**self.failures))

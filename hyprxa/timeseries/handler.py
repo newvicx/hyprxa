@@ -2,7 +2,6 @@ import logging
 import queue
 import sys
 import threading
-import warnings
 from collections.abc import Iterable
 from dataclasses import asdict
 from typing import Any

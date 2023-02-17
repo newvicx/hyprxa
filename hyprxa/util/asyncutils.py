@@ -4,17 +4,13 @@ contexts.
 This is a handpicked set of utility functions directly from
 [Prefect](https://github.com/PrefectHQ/prefect/blob/main/src/prefect/utilities/asyncutils.py)
 """
-import inspect
 from typing import (
     Any,
     Awaitable,
     Callable,
     Coroutine,
     Dict,
-    List,
-    ParamSpec,
-    TypeGuard,
-    TypeVar
+    List
 )
 from uuid import UUID, uuid4
 
@@ -23,31 +19,8 @@ import anyio.abc
 
 
 
-P = ParamSpec("P")
-R = TypeVar("R")
 # Global references to prevent garbage collection for `add_event_loop_shutdown_callback`
 EVENT_LOOP_GC_REFS = {}
-
-
-def is_async_fn(
-    func: Callable[P, R] | Callable[P, Awaitable[R]]
-) -> TypeGuard[Callable[P, Awaitable[R]]]:
-    """Returns `True` if a function returns a coroutine.
-
-    See https://github.com/microsoft/pyright/issues/2142 for an example use
-    """
-    while hasattr(func, "__wrapped__"):
-        func = func.__wrapped__
-
-    return inspect.iscoroutinefunction(func)
-
-
-def is_async_gen_fn(func):
-    """Returns `True` if a function is an async generator."""
-    while hasattr(func, "__wrapped__"):
-        func = func.__wrapped__
-
-    return inspect.isasyncgenfunction(func)
 
 
 async def add_event_loop_shutdown_callback(coroutine_fn: Callable[[], Awaitable]):

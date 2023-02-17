@@ -165,7 +165,7 @@ class Timeseries:
                     timechunk, valchunk = timechunk[index:], valchunk[index:]
                     while True:
                         # The chunk receiver has the option to slice the chunk and
-                        # send the remain back to the generator where it will be
+                        # send the remaining back to the generator where it will be
                         # served up on the next iteration
                         remain = yield timechunk, valchunk
                         if not remain:

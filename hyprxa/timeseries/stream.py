@@ -7,6 +7,7 @@ from motor.motor_asyncio import AsyncIOMotorCollection
 
 from hyprxa.timeseries.models import AnySourceSubscriptionRequest
 from hyprxa.types import TimeseriesRow
+from hyprxa.util.asyncutils import create_gather_task_group
 from hyprxa.util.time import (
     get_timestamp_index,
     iter_timeseries_rows,
@@ -16,7 +17,7 @@ from hyprxa.util.time import (
 
 
 def format_timeseries_content(
-    content: List[Dict[str, datetime | Any]]
+    content: List[Dict[str, datetime | Any] | None]
 ) -> Dict[str, List[datetime | Any]]:
     """Format query results for iteration."""
     formatted = {"timestamp": [], "value": []}
@@ -24,6 +25,41 @@ def format_timeseries_content(
         formatted["timestamp"].append(item["timestamp"])
         formatted["value"].append(item["value"])
     return formatted
+
+
+async def find_timeseries_documents_in_range(
+    collection: AsyncIOMotorCollection,
+    start_time: datetime,
+    end_time: datetime,
+    hash_: int,
+    source: str
+) -> List[Dict[str, datetime | Any] | None]:
+    """Find all timeseries documents for given hash and source in a time range."""
+    return await collection.find(
+        filter={
+            "timestamp": {"$gte": start_time, "$lt": end_time},
+            "subscription": hash_,
+            "source": source
+        },
+        projection={"timestamp": 1, "value": 1, "_id": 0}
+    ).sort("timestamp", 1).to_list(None)
+
+
+async def find_timeseries_documents_at_time(
+    collection: AsyncIOMotorCollection,
+    time: datetime,
+    hash_: int,
+    source: str
+) -> List[Dict[str, datetime | Any] | None]:
+    """Find a timeseries document for given hash and source at a specific time."""
+    return await collection.find(
+        filter={
+            "timestamp": time,
+            "subscription": hash_,
+            "source": source
+        },
+        projection={"timestamp": 1, "value": 1, "_id": 0}
+    ).sort("timestamp", 1).to_list(1)
 
 
 async def get_timeseries(
@@ -58,7 +94,10 @@ async def get_timeseries(
     if start_time >= end_time:
         raise ValueError("'start_time' cannot be greater than or equal to 'end_time'")
 
+    # Factory into the time range splitting to make sure we dont load too many
+    # documents into memory
     request_chunk_size = min(int(150_000/len(subscriptions.subscriptions)), 10_000)
+    
     start_times, end_times = split_range_on_frequency(
         start_time=start_time,
         end_time=end_time,
@@ -74,38 +113,46 @@ async def get_timeseries(
     hashes = sorted(subscriptions)
 
     for start_time, end_time in zip(start_times, end_times):
-        dispatch = [
-            collection.find(
-                filter={
-                    "timestamp": {"$gte": start_time, "$lt": end_time},
-                    "subscription": hash_,
-                    "source": source
-                },
-                projection={"timestamp": 1, "value": 1, "_id": 0}
-            ).sort("timestamp", 1).to_list(None) for hash_, source in hashes
-        ]
-        contents = await asyncio.gather(*dispatch)
+        keys = []
+        async with create_gather_task_group() as tg:
+            for hash_, source in hashes:
+                key = tg.start_soon(
+                    find_timeseries_documents_in_range,
+                    collection,
+                    start_time,
+                    end_time,
+                    hash_,
+                    source
+                )
+                keys.append(key)
+
+        contents = [tg.get_result(key) for key in keys]
         data = [format_timeseries_content(content) for content in contents]
         index = get_timestamp_index(data)
 
         for timestamp, row in iter_timeseries_rows(index, data):
             yield timestamp, row
+    
+    # The query for documents in a range specified `$lt: end_time` so that we
+    # do not pull duplicate documents as we iterate through the start and end
+    # times (we use $gte: start). So after we have gone through the whole time
+    # range we make one last query for the end time so the range is inclusive.
     else:
-        # This covers the inclusion of the end time in the query range
-        dispatch = [
-            collection.find(
-                filter={
-                    "timestamp": end_time,
-                    "subscription": hash_,
-                    "source": source
-                },
-                projection={"timestamp": 1, "value": 1, "_id": 0}
-            ).sort("timestamp", 1).to_list(None) for hash_, source in hashes
-        ]
-        contents = await asyncio.gather(*dispatch)
+        keys = []
+        async with create_gather_task_group() as tg:
+            for hash_, source in hashes:
+                key = tg.start_soon(
+                    find_timeseries_documents_at_time,
+                    collection,
+                    end_time,
+                    hash_,
+                    source
+                )
+        
+        contents = [tg.get_result(key) for key in keys]
         data = [format_timeseries_content(content) for content in contents]
         index = get_timestamp_index(data)
         
-        if index:
-            for timestamp, row in iter_timeseries_rows(index, data):
-                yield timestamp, row
+        # This works fine even there are no samples (i.e index is empty list)
+        for timestamp, row in iter_timeseries_rows(index, data):
+            yield timestamp, row

@@ -200,19 +200,18 @@ class TimeseriesCollectionView(Iterable[TimeseriesRow]):
         Raises:
             ValueError: If 'start_time' >= 'end_time'.
         """
-        index, iters = [], []
+        hashes, iters = [], []
         for series in self._series:
-            index.append(hash(series.subscription))
+            hashes.append((hash(series.subscription), series.subscription.source))
             iters.append(series.iter_chunks(start_time, end_time))
         
         if not iters:
             return
         
-        index, iters = zip(*sorted(zip(index, iters), key=lambda x: x[0]))
+        _, iters = zip(*sorted(zip(hashes, iters), key=lambda x: x[0]))
 
         iters = cast(List[Generator[Tuple[TimeChunk, Chunk], bool]], iters)
 
-        yield index
         # Loop until we have exhausted all chunk iterators for each timeseries
         while True:
             timestamps: Set[datetime] = set()
