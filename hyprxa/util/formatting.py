@@ -1,8 +1,6 @@
-import json
 import re
 from typing import List
 
-from hyprxa.events import EventDocument
 from hyprxa.types import JSONPrimitive, TimeseriesRow
 
 
@@ -34,18 +32,6 @@ def format_timeseries_rows(row: TimeseriesRow) -> List[JSONPrimitive]:
     """
     return [row[0].isoformat(), *row[1]]
 
-
-def format_event_document(event: EventDocument) -> List[JSONPrimitive]:
-    """Format an event document as an iterable. The keys of the payload are
-    flattened to produce a row structure.
-    """
-    return [
-        event.timestamp.isoformat(),
-        event.posted_by,
-        event.topic,
-        event.routing_key,
-        json.dumps(event.payload)
-    ]
 
 def format_docstring(description: str) -> str:
     """Takes a docstring formatted string and converts it to a string with no

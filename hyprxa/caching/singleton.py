@@ -10,7 +10,11 @@ from hyprxa.caching.base import (
     BaseCacheCollection,
     BaseCachedFunction
 )
-from hyprxa.caching.core import clear_cached_func, create_cached_func_wrapper
+from hyprxa.caching.core import (
+    clear_cached_func,
+    create_cached_func_wrapper,
+    invalidate_cached_value
+)
 from hyprxa.caching.exceptions import CacheKeyNotFoundError
 from hyprxa.util.caching import CacheType
 
@@ -27,26 +31,31 @@ class SingletonCache(BaseCache, Iterable[Any]):
         self._mem_cache: Dict[str, Any] = {}
         self._mem_cache_lock = threading.Lock()
 
-    def read_result(self, key: str) -> Any:
+    def read_result(self, value_key: str) -> Any:
         """Read a value and associated messages from the cache.
 
         Raise `CacheKeyNotFoundError` if the value doesn't exist.
         """
         with self._mem_cache_lock:
             try:
-                return self._mem_cache[key]
+                return self._mem_cache[value_key]
             except KeyError:
                 raise CacheKeyNotFoundError()
     
-    def write_result(self, key: str, value: Any) -> None:
+    def write_result(self, value_key: str, value: Any) -> None:
         """Write a value and associated messages to the cache."""
         with self._mem_cache_lock:
-            self._mem_cache[key] = value
+            self._mem_cache[value_key] = value
 
     def clear(self) -> None:
         """Clear all values from this function cache."""
         with self._mem_cache_lock:
             self._mem_cache.clear()
+
+    def invalidate(self, value_key: str) -> None:
+        """Invalidate a cached value."""
+        with self._mem_cache_lock:
+            self._mem_cache.pop(value_key, None)
 
     def __iter__(self) -> Iterable[Any]:
         with self._mem_cache_lock:
@@ -191,6 +200,8 @@ class SingletonAPI:
                 cached_func = SingletonFunction(f)
                 wrapper = create_cached_func_wrapper(f, cached_func)
                 wrapper.clear = clear_cached_func(cached_func)
+                wrapper.invalidate = invalidate_cached_value(cached_func)
+                wrapper.__signature__ = inspect.signature(f)
                 return wrapper
             return decorator
         
@@ -198,6 +209,8 @@ class SingletonAPI:
             cached_func = SingletonFunction(func)
             wrapper = create_cached_func_wrapper(func, cached_func)
             wrapper.clear = clear_cached_func(cached_func)
+            wrapper.invalidate = invalidate_cached_value(cached_func)
+            wrapper.__signature__ = inspect.signature(func)
             return wrapper
 
     @staticmethod

@@ -291,6 +291,7 @@ class MemoAPI:
                 wrapper = create_cached_func_wrapper(f, cached_func)
                 wrapper.invalidate = invalidate_cached_value(cached_func)
                 wrapper.ttl = ttl_seconds
+                wrapper.__signature__ = inspect.signature(f)
                 return wrapper
             return decorator
         
@@ -299,6 +300,7 @@ class MemoAPI:
             wrapper = create_cached_func_wrapper(func, cached_func)
             wrapper.invalidate = invalidate_cached_value(cached_func)
             wrapper.ttl = ttl_seconds
+            wrapper.__signature__ = inspect.signature(func)
             return wrapper
 
     @classmethod

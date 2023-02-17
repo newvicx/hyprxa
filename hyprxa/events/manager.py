@@ -9,22 +9,24 @@ import anyio
 from aiormq import Channel, Connection
 from pamqp import commands
 
-from hyprxa.base import BaseBroker, SubscriptionLimitError
-from hyprxa.events.exceptions import EventBusClosed
+from hyprxa.base.broker import BaseBroker
+from hyprxa.base.exceptions import SubscriptionLimitError
+from hyprxa.events.exceptions import EventManagerClosed
 from hyprxa.events.handler import MongoEventHandler
-from hyprxa.events.models import (
-    EventBusInfo,
-    EventDocument,
-    TopicSubscription
-)
+from hyprxa.events.models import EventManagerInfo, EventDocument
 from hyprxa.events.subscriber import EventSubscriber
+from hyprxa.topics.models import TopicSubscription
 
 
 
-_LOGGER = logging.getLogger("hyprxa.events.bus")
+_LOGGER = logging.getLogger("hyprxa.events.manager")
 
 
-class EventBus(BaseBroker):
+class EventManager(BaseBroker):
+    """Publishes messages to RabbitMQ and manages event subscribers.
+    
+    
+    """
     def __init__(
         self,
         storage: MongoEventHandler,
@@ -41,9 +43,9 @@ class EventBus(BaseBroker):
         self._total_stored = 0
 
     @property
-    def info(self) -> EventBusInfo:
+    def info(self) -> EventManagerInfo:
         storage_info = self._storage.worker.info if self._storage.worker else {}
-        return EventBusInfo(
+        return EventManagerInfo(
             name=self.__class__.__name__,
             closed=self.closed,
             status=self.status,
@@ -62,7 +64,7 @@ class EventBus(BaseBroker):
         )
 
     def close(self) -> None:
-        """Close the event bus."""
+        """Close the event manager."""
         super().close()
         self.clear()
         self._storage.close()
@@ -78,7 +80,7 @@ class EventBus(BaseBroker):
                 pass
 
     def publish(self, event: EventDocument) -> bool:
-        """Publish an event to the bus.
+        """Publish an event to the manager.
         
         Args:
             event: The event to publish.
@@ -88,10 +90,10 @@ class EventBus(BaseBroker):
                 or storage queue is full, event was not enqueued.
         
         Raises:
-            EventBusClosed: The event bus is closed.
+            EventManagerClosed: The event manager is closed.
         """
         if self.closed:
-            raise EventBusClosed()
+            raise EventManagerClosed()
         if self._publish_queue.full() or self._storage_queue.full():
             return False
         self._publish_queue.put_nowait((1, event))
@@ -99,10 +101,23 @@ class EventBus(BaseBroker):
         return True
 
     async def subscribe(self, subscriptions: Sequence[TopicSubscription]) -> EventSubscriber:
+        """Subscribe to a topic on the manager.
+        
+        Args:
+            subscriptions: The subscription to subscriber to.
+        
+        Returns:
+            subscriber: The event subscriber instance.
+
+        Raises:
+            EventManagerClosed: The manager is closed.
+            SubscriptionLimitError: The manager is maxed out on subscribers.
+            SubscriptionTimeout: Timed out waiting for rabbitmq connection.
+        """
         if self.closed:
-            raise EventBusClosed()
-        if len(self._subscribers) >= self._max_subscribers:
-            raise SubscriptionLimitError(f"Max subscriptions reached ({self._max_subscribers})")
+            raise EventManagerClosed()
+        if len(self._subscribers) >= self.max_subscribers:
+            raise SubscriptionLimitError(f"Max subscriptions reached ({self.max_subscribers})")
         
         subscriptions = set(subscriptions)
 
@@ -120,6 +135,7 @@ class EventBus(BaseBroker):
         channel: Channel,
         declare_ok: commands.Queue.DeclareOk,
     ) -> None:
+        """Bind the queue to all subscriber subscriptions."""
         binds = [
             channel.queue_bind(
                 declare_ok.queue,
@@ -131,17 +147,17 @@ class EventBus(BaseBroker):
         await asyncio.gather(*binds)
 
     async def run(self) -> None:
-        """Manage background tasks for bus."""
+        """Manage background tasks for manager."""
         try:
             async with anyio.create_task_group() as tg:
                 tg.start_soon(self.manage_connection)
                 tg.start_soon(self._store_events)
         except (Exception, anyio.ExceptionGroup):
-            _LOGGER.error("Event bus failed", exc_info=True)
+            _LOGGER.error("Event manager failed", exc_info=True)
             raise
 
     async def manage_connection(self) -> None:
-        attempts = 0
+        """Manages RabbitMQ connection for manager."""
         connection: Connection = None
         
         try:
@@ -152,18 +168,28 @@ class EventBus(BaseBroker):
                 try:
                     await connection.connect()
                 except Exception:
-                    sleep = self.get_backoff(attempts)
+                    sleep = self.backoff.compute()
                     _LOGGER.warning("Connection failed, trying again in %0.2f", sleep, exc_info=True)
                     await asyncio.sleep(sleep)
-                    attempts += 1
                     
                     continue
                 
                 else:
-                    attempts = 0
+                    self.backoff.reset()
                     self.set_connection(connection)
                 
                 try:
+                    # We need to remove the connection as soon as its closed.
+                    # In testing, there was a race condition that occurred where
+                    # the subscriber reconnect process would kick off before
+                    # exiting this context and removing the connection. The
+                    # manager state would still be 'ready' but the connection
+                    # was closed. So the reconnect coroutine would immediately
+                    # assume the connection was ready again and proceed. It would
+                    # then check the connection, find it was closed, and fail.
+                    # It was all dependant on how the loop scheduled the callbacks.
+                    # Removing it as callback to the `closing` future resolves
+                    # the issue.
                     connection.closing.add_done_callback(lambda _: self.remove_connection())
                     async with anyio.create_task_group() as tg:
                         tg.start_soon(self._publish_events, connection, self.exchange)
@@ -173,7 +199,7 @@ class EventBus(BaseBroker):
                         await connection.close(timeout=2)
                     _LOGGER.warning("Error in manager", exc_info=True)
                 
-                sleep = self.get_backoff(0)
+                sleep = self.backoff.compute()
                 _LOGGER.warning(
                     "Manager unavailable, attempting to reconnect in %0.2f seconds",
                     sleep,
@@ -234,9 +260,12 @@ class EventBus(BaseBroker):
         while True:
             event = await self._storage_queue.get()
             self._storage_queue.task_done()
-            await anyio.to_thread.run_sync(
-                self._storage.publish,
-                event,
-                cancellable=True
-            )
-            self._total_stored += 1
+            try:
+                await anyio.to_thread.run_sync(
+                    self._storage.publish,
+                    event,
+                    cancellable=True
+                )
+                self._total_stored += 1
+            except TimeoutError:
+                _LOGGER.error("Failed to store event. Event will be discarded", exc_info=True)

@@ -110,6 +110,16 @@ class TimeseriesWorker(MongoWorker):
 class MongoTimeseriesHandler:
     """A handler that sends timeseries samples to MongoDB.
 
+    The handler starts a worker thread in the background and submits timeseries
+    samples to the worker which flushes samples to the database at set intervals
+    or if the buffer reaches a certain size.
+
+    If a worker fails, the next call to `publish` will attempt to start
+    another worker for this handler. When a worker is started, the handler will
+    wait up to 10 seconds and confirm if the worker is running. If it is not,
+    the worker is stopped and `TimeoutError` is raised on `publish`. The caller
+    can choose what to do with the samples from there, including re-publish them.
+
     Args:
         connection_url: Mongo DSN connection url.
         database_name: The database to save samples to.
@@ -133,7 +143,10 @@ class MongoTimeseriesHandler:
         """Start the timeseries worker thread."""
         worker = TimeseriesWorker(**self.kwargs)
         worker.start()
-        worker.wait()
+        worker.wait(10)
+        if not worker.is_running:
+            worker.stop()
+            raise TimeoutError("Timed out waiting for worker thread to be ready.")
         return worker
 
     def get_worker(self) -> TimeseriesWorker:

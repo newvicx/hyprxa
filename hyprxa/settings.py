@@ -23,14 +23,12 @@ from pydantic import (
 )
 
 from hyprxa.base import BaseBroker
-from hyprxa.events import EventBus, MongoEventHandler
-from hyprxa.events.handler import EventWorker
+from hyprxa.events.handler import EventWorker, MongoEventHandler
+from hyprxa.events.manager import EventManager
 from hyprxa.timeseries.sources import Source
-from hyprxa.timeseries import (
-    MongoTimeseriesHandler,
-    SubscriptionLock,
-    TimeseriesManager
-)
+from hyprxa.timeseries.handler import MongoTimeseriesHandler
+from hyprxa.timeseries.lock import SubscriptionLock
+from hyprxa.timeseries.manager import TimeseriesManager
 from hyprxa.timeseries.handler import TimeseriesWorker
 from hyprxa.util.defaults import DEFAULT_APPNAME, DEFAULT_DATABASE
 from hyprxa.util.formatting import format_docstring
@@ -40,7 +38,7 @@ from hyprxa.util.mongo import MongoWorker
 
 
 _BRKR = inspect.signature(BaseBroker).parameters
-_EB = inspect.signature(EventBus).parameters
+_EM = inspect.signature(EventManager).parameters
 _LK = inspect.signature(SubscriptionLock).parameters
 _MW = inspect.signature(MongoWorker).parameters
 _TH = inspect.signature(MongoTimeseriesHandler).parameters
@@ -451,7 +449,7 @@ class EventBusSettings(BaseSettings):
     max_subscribers: conint(gt=0) = Field(
         default=_BRKR["max_subscribers"].default,
         description=format_docstring("""The maximum number of concurrent
-        subscribers which can run by a single event bus instance. Defaults to `{}`
+        subscribers which can run by a single event manager instance. Defaults to `{}`
         """.format(_BRKR["max_subscribers"].default))
     )
     maxlen: conint(gt=0) = Field(
@@ -462,10 +460,10 @@ class EventBusSettings(BaseSettings):
         Defaults to `{}`""".format(_BRKR["maxlen"].default))
     )
     max_buffered_events: conint(gt=0) = Field(
-        default=_EB["max_buffered_events"].default,
+        default=_EM["max_buffered_events"].default,
         description=format_docstring("""The maximum number of events that can
-        be buffered on the event bus. If the limit is reached, the bus will refuse
-        to enqueue any published events. Defaults to `{}""".format(_EB["max_buffered_events"].default))
+        be buffered on the event manager. If the limit is reached, the bus will refuse
+        to enqueue any published events. Defaults to `{}""".format(_EM["max_buffered_events"].default))
     )
     subscription_timeout: confloat(gt=0) = Field(
         default=_BRKR["subscription_timeout"].default,
@@ -492,11 +490,11 @@ class EventBusSettings(BaseSettings):
         """.format(_BRKR["initial_backoff"].default))
     )
 
-    def get_event_bus(self) -> EventBus:
-        """Configure and start an event bus instance from settings."""
+    async def get_manager(self) -> EventManager:
+        """Configure and start an event manager instance from settings."""
         storage = EVENT_HANDLER_SETTINGS.get_handler()
         factory = RABBITMQ_SETTINGS.get_factory()
-        bus = EventBus(
+        bus = EventManager(
             storage=storage,
             factory=factory,
             exchange=self.exchange,
@@ -508,7 +506,7 @@ class EventBusSettings(BaseSettings):
             max_backoff=self.max_backoff,
             initial_backoff=self.initial_backoff
         )
-        bus.start()
+        await bus.start()
         return bus
 
     class Config:
@@ -604,7 +602,7 @@ class TimeseriesManagerSettings(BaseSettings):
     max_subscribers: conint(gt=0) = Field(
         default=_BRKR["max_subscribers"].default,
         description=format_docstring("""The maximum number of concurrent
-        subscribers which can run by a single event bus instance. Defaults to `{}`
+        subscribers which can run by a single event manager instance. Defaults to `{}`
         """.format(_BRKR["max_subscribers"].default))
     )
     maxlen: conint(gt=0) = Field(
@@ -652,7 +650,7 @@ class TimeseriesManagerSettings(BaseSettings):
         subscriptions. Defaults to `{}`""".format(_TM["max_failed"].default))
     )
 
-    def get_manager(self, source: Source) -> EventBus:
+    async def get_manager(self, source: Source) -> TimeseriesManager:
         """Configure and start a manager instance from settings."""
         storage = TIMESERIES_HANDLER_SETTINGS.get_handler()
         factory = RABBITMQ_SETTINGS.get_factory()
@@ -677,7 +675,7 @@ class TimeseriesManagerSettings(BaseSettings):
             initial_backoff=self.initial_backoff,
             max_failed=self.max_failed
         )
-        manager.start()
+        await manager.start()
         return manager
 
     class Config:

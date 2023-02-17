@@ -1,13 +1,10 @@
 from fastapi import Depends, Request
 from starlette.middleware.authentication import AuthenticationMiddleware
 
-from hyprxa.auth import (
-    AuthenticationClient,
-    BaseAuthenticationBackend,
-    BaseUser,
-    TokenHandler,
-    requires
-)
+from hyprxa.auth.base import BaseAuthenticationBackend
+from hyprxa.auth.models import BaseUser, TokenHandler
+from hyprxa.auth.protocols import AuthenticationClient
+from hyprxa.auth.scopes import requires
 from hyprxa.exceptions import NotConfiguredError
 from hyprxa.settings import HYPRXA_SETTINGS
 

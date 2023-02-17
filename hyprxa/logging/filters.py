@@ -1,7 +1,7 @@
 import logging
 import socket
 
-from hyprxa.context import ip_address_context, user_context
+from hyprxa._context import ip_address_context, user_context
 
 
 

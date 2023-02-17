@@ -1,6 +1,6 @@
-from hyprxa.base import BrokerClosed
+from hyprxa.base.exceptions import BrokerClosed
 
 
 
-class EventBusClosed(BrokerClosed):
-    """Raised when attempting to subscribe to a closed event bus."""
+class EventManagerClosed(BrokerClosed):
+    """Raised when attempting to subscribe to a closed manager."""

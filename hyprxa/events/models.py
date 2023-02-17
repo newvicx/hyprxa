@@ -1,79 +1,16 @@
-from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List, Tuple
 
 import orjson
 import pydantic
-from jsonschema import SchemaError
-from jsonschema.validators import validator_for
-from pydantic import Field, root_validator, validator
+from pydantic import root_validator
 
-from hyprxa.base import BaseSubscription, BaseSubscriptionRequest, BrokerInfo
-from hyprxa.context import get_username
+from hyprxa.base.models import BrokerInfo
+from hyprxa.util.events import set_routing_key
 from hyprxa.util.models import BaseModel
+from hyprxa._context import get_username
 
-
-
-def set_routing_key(v: Dict[str, str | None]) -> Dict[str, str]:
-    """Set the routing key for the event."""
-    topic = v.get("topic")
-    routing_key = v.get("routing_key")
-    if routing_key and routing_key.startswith(topic):
-        return v
-    if routing_key:
-        routing_key = ".".join([split for split in routing_key.split(".") if split])
-        v["routing_key"] = f"{topic}.{routing_key}"
-    else:
-        v["routing_key"] = f"{topic}.#"
-    return v
-
-
-class Topic(BaseModel):
-    """A topic model tied to a class of events."""
-    topic: str
-    jschema: Dict[str, Any]
-    
-    @validator("jschema")
-    def _is_valid_schema(cls, jschema: Dict[str, Any]) -> Dict[str, Any]:
-        validator_ = validator_for(jschema)
-        try:
-            validator_.check_schema(jschema)
-        except SchemaError as e:
-            raise ValueError(f"{e.json_path}-{e.message}")
-        return jschema
-
-
-@dataclass
-class TopicDocument:
-    """MongoDB document model for a topic."""
-    topic: str
-    jschema: Dict[str, Any]
-    modified_by: str | None
-    modified_at: datetime
-
-
-ValidatedTopicDocument = pydantic.dataclasses.dataclass(TopicDocument)
-
-
-class TopicQueryResult(BaseModel):
-    """Result set of topic query."""
-    items: List[str | None] = Field(default_factory=list)
-
-
-class TopicSubscription(BaseSubscription):
-    """Subscription model for a topic or subset of a topic."""
-    topic: str
-    routing_key: str | None
-    
-    @root_validator
-    def _set_routing_key(cls, v: Dict[str, str | None]) -> Dict[str, str]:
-        return set_routing_key(v)
-
-
-class TopicSubscriptionRequest(BaseSubscriptionRequest):
-    """Model to subscribe to multiple topics."""
-    subscriptions: Sequence[TopicSubscription]
 
 
 @dataclass(frozen=True)
@@ -105,9 +42,6 @@ class EventDocument:
             return False
 
 
-ValidatedEventDocument = pydantic.dataclasses.dataclass(EventDocument)
-
-
 class Event(BaseModel):
     """An event to publish."""
     topic: str
@@ -134,8 +68,11 @@ class EventQueryResult(BaseModel):
     items: List[EventDocument]
 
 
-class EventBusInfo(BrokerInfo):
-    """Model for event bus statistics."""
+ValidatedEventDocument = pydantic.dataclasses.dataclass(EventDocument)
+
+
+class EventManagerInfo(BrokerInfo):
+    """Model for event manager statistics."""
     publish_buffer_size: int
     storage_buffer_size: int
     total_published_events: int

@@ -16,7 +16,13 @@ from hyprxa.timeseries.models import (
 
 
 class BaseConnection:
-    """Base implementation for a connection."""
+    """Base implementation for a connection.
+    
+    Connections implement the protocol to retrieve data from a source, parse
+    the data, and package it into a `SubscriptionMessage` for the client.
+    Connections are always slaves to a client and should only be created in
+    the context of a client.
+    """
     def __init__(self) -> None:
         self._subscriptions: Set[BaseSourceSubscription] = set()
         self._data_queue: asyncio.Queue = None
@@ -24,7 +30,7 @@ class BaseConnection:
         self._started: asyncio.Event = asyncio.Event()
         self._loop: asyncio.AbstractEventLoop = asyncio.get_event_loop()
 
-        self._created = datetime.now()
+        self._created = datetime.utcnow()
         self._total_published = 0
 
     @property
@@ -34,7 +40,7 @@ class BaseConnection:
             name=self.__class__.__name__,
             online=self.online,
             created=self._created,
-            uptime=(datetime.now() - self._created).total_seconds(),
+            uptime=(datetime.utcnow() - self._created).total_seconds(),
             total_published_messages=self._total_published,
             total_subscriptions=len(self._subscriptions)
         )
@@ -92,6 +98,25 @@ class BaseConnection:
 
 class BaseClient:
     """Base implementation for a client.
+
+    Clients interface between a `TimeseriesManager` and a data source. A data
+    source could be a REST API, CSV file, or database; it doesn't matter. A client
+    abstracts away the mechanism of the data integration from the manager and
+    provides a consistent interface to ferry data. Clients do this through a
+    'connection'. A connection is where actual I/O and data processing occur,
+    a client manages those connections, adding them when needed for
+    subscriptions and tearing them down when no longer needed.
+
+    A hyprxa compliant client/connection implementation must provide certain
+    guarentees...
+
+        - Clients must only send messages containing unique timestamped values in
+        monotonically increasing order
+        - `TimestampedValue`(s) must be sorted within a message.
+
+    How this is done is entirely up to the implementation. Some data sources
+    may already provide this guarentee but it is the responsibility of the
+    client to ensure this is met.
     
     Args:
         max_buffered_messages: The max length of the data queue for the client.
@@ -102,7 +127,7 @@ class BaseClient:
         self._dropped: asyncio.Queue = asyncio.Queue()
         self._loop: asyncio.AbstractEventLoop = asyncio.get_event_loop()
 
-        self._created = datetime.now()
+        self._created = datetime.utcnow()
         self._connections_serviced = 0
 
     @property
@@ -128,7 +153,7 @@ class BaseClient:
             data_queue_size=self._data.qsize(),
             dropped_connection_queue_size=self._dropped.qsize(),
             created=self._created,
-            uptime=(datetime.now() - self._created).total_seconds(),
+            uptime=(datetime.utcnow() - self._created).total_seconds(),
             active_connections=len(self._connections),
             active_subscriptions=len(self.subscriptions),
             subscription_capacity=self.capacity,
@@ -156,7 +181,10 @@ class BaseClient:
                 pass
 
     async def close(self) -> None:
-        """Close the client instance and shut down all connections."""
+        """Close the client instance and shut down all connections.
+        
+        `close` must be idempotent.
+        """
         raise NotImplementedError()
 
     async def get_dropped(self) -> AsyncIterable[DroppedSubscriptions]:
@@ -215,7 +243,7 @@ class BaseClient:
             e = fut.exception()
         # If a connection was cancelled by the client and the subscriptions were
         # replaced through another connection, subscriptions will be empty set.
-        # `unsubscribe` from the manager will lead to non-empty subscriptions.
+        # But, `unsubscribe` will lead to non-empty subscriptions.
         msg = DroppedSubscriptions(
             subscriptions=connection.subscriptions.difference(self.subscriptions),
             error=e

@@ -4,7 +4,7 @@ from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorClientSession
 from pymongo.errors import PyMongoError
 
 from hyprxa.settings import MONGO_SETTINGS
-from hyprxa.util.mongo import ServerUnavailable, SessionManager
+from hyprxa.util.mongo import DatabaseUnavailable, SessionManager
 
 
 
@@ -33,7 +33,7 @@ async def get_exclusive_mongo_client() -> AsyncGenerator[AsyncIOMotorClient, Non
     try:
         pong = await client.admin.command("ping")
         if not pong.get("ok"):
-            raise ServerUnavailable("Unable to ping server.")
+            raise DatabaseUnavailable("Unable to ping server.")
         yield client
     finally:
         client.close()
@@ -49,7 +49,7 @@ async def get_mongo_session() -> AsyncGenerator[AsyncIOMotorClientSession, None]
     try:
         pong = await client.admin.command("ping")
         if not pong.get("ok"):
-            raise ServerUnavailable("Unable to ping server.")
+            raise DatabaseUnavailable("Unable to ping server.")
     except PyMongoError:
         client.close()
         raise

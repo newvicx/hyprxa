@@ -6,7 +6,7 @@ from starlette.datastructures import Headers, MutableHeaders
 from starlette.responses import Response
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from hyprxa.context import ip_address_context, user_context
+from hyprxa._context import ip_address_context, user_context
 
 
 

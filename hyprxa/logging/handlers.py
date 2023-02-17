@@ -10,7 +10,7 @@ from pymongo import MongoClient
 from pymongo.collection import Collection
 from pymongo.errors import OperationFailure
 
-from hyprxa.util.mongo import MongoWorker
+from hyprxa.util.mongo import DatabaseUnavailable, MongoWorker
 from hyprxa.util.logging import cast_logging_level
 
 
@@ -92,6 +92,39 @@ class LogWorker(MongoWorker):
                     self._pending_size = 0
                     self._retries = 0
 
+    def _run(self):
+        try:
+            with MongoClient(
+                self._connection_uri,
+                maxPoolSize=1,
+                **self._connection_args
+            ) as client:
+                pong = client.admin.command("ping")
+                if not pong.get("ok"):
+                    raise DatabaseUnavailable("Unable to ping server.")
+                self._running_event.set()
+                while not self._stop_event.is_set():
+                    self._flush_event.wait(self._flush_interval)
+                    self._flush_event.clear()
+                    
+                    self.send(client)
+
+                    self._send_finished_event.set()
+                    self._send_finished_event.clear()
+
+                # After the stop event, we are exiting...
+                # Try to send any remaining pending documents
+                self.send(client, True)
+        except Exception:
+            if logging.raiseExceptions and sys.stderr:
+                sys.stderr.write("The log worker encountered a fatal error.\n")
+                traceback.print_exc(file=sys.stderr)
+                sys.stderr.write("--- Worker Info ---\n")
+                sys.stderr.write(json.dump(self.info, indent=2))
+        finally:
+            self._send_finished_event.set()
+            self._running_event.clear()
+
 
 class MongoLogHandler(logging.Handler):
     """A logging handler that sends logs to MongoDB.
@@ -127,22 +160,12 @@ class MongoLogHandler(logging.Handler):
         """Start the log worker thread."""
         worker = LogWorker(**self.kwargs)
         worker.start()
-        worker.wait(timeout=2)
-        if not worker.is_running:
-            raise TimeoutError("Timed out waiting for worker.")
         return worker
 
     def get_worker(self) -> LogWorker:
-        """Get a log worker. If a worker does not exist or the worker
-        is not running, a new worker is started.
+        """Get a log worker. If a worker does not exist a new worker is started.
         """
         if self.worker is None:
-            worker = self.start_worker()
-            self.worker = worker
-        elif not self.worker.is_running:
-            worker, self.worker = self.worker, None
-            if not worker.is_stopped:
-                worker.stop()
             worker = self.start_worker()
             self.worker = worker
         return self.worker

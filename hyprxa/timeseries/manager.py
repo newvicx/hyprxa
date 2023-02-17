@@ -19,9 +19,9 @@ from hyprxa.timeseries.base import BaseClient
 from hyprxa.timeseries.exceptions import (
     ClientClosed,
     ClientSubscriptionError,
-    ManagerClosed,
     SubscriptionError,
-    SubscriptionLockError
+    SubscriptionLockError,
+    TimeseriesManagerClosed
 )
 from hyprxa.timeseries.handler import MongoTimeseriesHandler
 from hyprxa.timeseries.lock import SubscriptionLock
@@ -39,9 +39,9 @@ _LOGGER = logging.getLogger("hyprxa.timeseries.manager")
 
 
 class TimeseriesManager(BaseBroker):
-    """Manages a client connection to a data source.
+    """Manages subscribers and a client connection to a data source.
     
-    A `TimeseriesManager` receives standard formatted messages from subscribers
+    A `TimeseriesManager` receives standard formatted messages from clients
     and broadcasts them out to subscribers via a routing key. The routing key
     is a unique combination of the source name and the hash of the subscription.
 
@@ -203,15 +203,15 @@ class TimeseriesManager(BaseBroker):
             subscriptions: The subscriptions to subscriber to.
         
         Returns:
-            subscriber: The event subscriber instance.
+            subscriber: The subscriber instance.
 
         Raises:
-            ManagerClosed: The manager is closed.
-            SubscriptionLimitError: The broker is maxed out on subscribers.
+            TimeseriesManagerClosed: The manager is closed.
+            SubscriptionLimitError: The manager is maxed out on subscribers.
             SubscriptionTimeout: Timed out waiting for rabbitmq connection.
         """
         if self.closed:
-            raise ManagerClosed()
+            raise TimeseriesManagerClosed()
         if len(self.subscribers) >= self.max_subscribers:
             raise SubscriptionLimitError(f"Max subscriptions reached ({self.max_subscribers})")
         
@@ -243,7 +243,7 @@ class TimeseriesManager(BaseBroker):
             except ClientClosed as e:
                 await self._lock.release(to_subscribe)
                 await self.close()
-                raise ManagerClosed() from e
+                raise TimeseriesManagerClosed() from e
             except Exception as e:
                 _LOGGER.warning("Error subscribing on client", exc_info=True)
                 await self._lock.release(to_subscribe)
@@ -319,6 +319,7 @@ class TimeseriesManager(BaseBroker):
                     continue
                 
                 else:
+                    self.backoff.reset()
                     self.set_connection(connection)
                 
                 try:
@@ -399,12 +400,15 @@ class TimeseriesManager(BaseBroker):
         while True:
             msg = await self._storage_queue.get()
             self._storage_queue.task_done()
-            await anyio.to_thread.run_sync(
-                self._storage.publish,
-                msg.to_samples(source),
-                cancellable=True
-            )
-            self._total_stored += 1
+            try:
+                await anyio.to_thread.run_sync(
+                    self._storage.publish,
+                    msg.to_samples(source),
+                    cancellable=True
+                )
+                self._total_stored += 1
+            except TimeoutError:
+                _LOGGER.error("Failed to store message. Message will be discarded")
 
     async def _manage_subscriptions(self) -> None:
         """Background task that manages subscription locking along with client

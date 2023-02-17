@@ -9,7 +9,7 @@ class TimeseriesError(HyprxaError):
 
 class SubscriptionLockError(SubscriptionError):
     """Raised by a manager after it failed to acquire locks for subscriptions
-    as a result of a LockingError.
+    due to an exception.
     """
 
 
@@ -17,9 +17,9 @@ class ClientSubscriptionError(SubscriptionError):
     """Raised by a manager when a client failed to subscribe to subscriptions."""
 
 
-class ManagerClosed(BrokerClosed):
-    """Raised when attempting to subscribe to a manager instance is closed."""
+class TimeseriesManagerClosed(BrokerClosed):
+    """Raised when attempting to subscribe to a closed manager."""
 
 
 class ClientClosed(TimeseriesError):
-    """Raised when a method is called on a closed client."""
+    """Raised when certain methods are called on a closed client."""

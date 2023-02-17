@@ -99,6 +99,16 @@ class EventWorker(MongoWorker):
 class MongoEventHandler:
     """A storage handler that sends events to MongoDB.
 
+    The handler starts a worker thread in the background and submits events
+    to the worker which flushes events to the database at set intervals or if
+    the buffer reaches a certain size.
+
+    If a worker fails, the next call to `publish` will attempt to start
+    another worker for this handler. When a worker is started, the handler will
+    wait up to 10 seconds and confirm if the worker is running. If it is not,
+    the worker is stopped and `TimeoutError` is raised on `publish`. The caller
+    can choose what to do with the events from there, including re-publish them.
+
     Args:
         connection_uri: Mongo DSN connection url.
         database_name: The database to save events to.
@@ -120,7 +130,10 @@ class MongoEventHandler:
         """Start the event worker thread."""
         worker = EventWorker(**self.kwargs)
         worker.start()
-        worker.wait()
+        worker.wait(10)
+        if not worker.is_running:
+            worker.stop()
+            raise TimeoutError("Timed out waiting for worker thread to be ready.")
         return worker
 
     def get_worker(self) -> EventWorker:
