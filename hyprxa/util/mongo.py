@@ -2,11 +2,12 @@ import atexit
 import logging
 import queue
 import threading
+from collections.abc import AsyncIterable
 from contextlib import asynccontextmanager
 from contextvars import Context
 from typing import Any, AsyncContextManager, Callable, Dict, List
 
-from motor.motor_asyncio import AsyncIOMotorClient
+from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorCollection
 from pymongo import MongoClient
 from pymongo.errors import (
     AutoReconnect,
@@ -253,3 +254,11 @@ class SessionManager:
                 if client is not None:
                     _LOGGER.info("Closing database client")
                     client.close()
+
+
+async def watch_collection(collection: AsyncIOMotorCollection) -> AsyncIterable[Any]:
+    """Open a change stream to a collection and stream changes."""
+    pipeline = [{'$match': {'operationType': 'insert'}}]
+    async with collection.watch(pipeline) as stream:
+        async for change in stream:
+            yield change

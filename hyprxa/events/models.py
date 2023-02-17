@@ -8,7 +8,7 @@ from pydantic import root_validator
 
 from hyprxa.base.models import BrokerInfo
 from hyprxa.util.events import set_routing_key
-from hyprxa.util.models import BaseModel
+from hyprxa.util.models import BaseModel, StorageHandlerInfo
 from hyprxa._context import get_username
 
 
@@ -75,6 +75,6 @@ class EventManagerInfo(BrokerInfo):
     """Model for event manager statistics."""
     publish_buffer_size: int
     storage_buffer_size: int
-    total_published_events: int
-    total_stored_events: int
-    storage_info: Dict[str, Any]
+    total_published: int
+    total_stored: int
+    storage: StorageHandlerInfo

@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Any, Dict, List
 
 import pydantic
-from pydantic import Field, create_model
+from pydantic import Field
 
 from hyprxa.timeseries.models import AnySourceSubscription
 from hyprxa.util.models import BaseModel
@@ -34,9 +34,3 @@ class UnitOpQueryResult(BaseModel):
 
 
 ValidatedUnitOpDocument = pydantic.dataclasses.dataclass(UnitOpDocument)
-
-ValidatedUnitOp = lambda model: create_model(
-    "UnitOp",
-    data_mapping=(Dict[str, model], ...),
-    __base__=UnitOp
-)

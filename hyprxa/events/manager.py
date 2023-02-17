@@ -30,11 +30,10 @@ class EventManager(BaseBroker):
     def __init__(
         self,
         storage: MongoEventHandler,
-        *args: Any,
         max_buffered_events: int = 1000,
         **kwargs: Any
     ) -> None:
-        super().__init__(*args, **kwargs)
+        super().__init__(**kwargs)
         self._storage = storage
         self._publish_queue: asyncio.PriorityQueue[Tuple[int, EventDocument]] = asyncio.PriorityQueue(maxsize=max_buffered_events)
         self._storage_queue: asyncio.Queue[EventDocument] = asyncio.Queue(maxsize=max_buffered_events)
@@ -44,23 +43,22 @@ class EventManager(BaseBroker):
 
     @property
     def info(self) -> EventManagerInfo:
-        storage_info = self._storage.worker.info if self._storage.worker else {}
         return EventManagerInfo(
             name=self.__class__.__name__,
             closed=self.closed,
             status=self.status,
             created=self.created,
             uptime=(datetime.utcnow() - self.created).total_seconds(),
-            active_subscribers=len(self._subscribers),
+            active_subscribers=len(self.subscribers),
             active_subscriptions=len(self.subscriptions),
-            subscriber_capacity=self.max_subscribers-len(self._subscribers),
+            subscriber_capacity=self.max_subscribers-len(self.subscribers),
             total_subscribers_serviced=self._subscribers_serviced,
-            subscriber_info=[subscriber.info for subscriber in self._subscribers.values()],
+            subscribers=[subscriber.info for subscriber in self.subscribers.values()],
             publish_buffer_size=self._publish_queue.qsize(),
             storage_buffer_size=self._storage_queue.qsize(),
-            total_published_events=self._total_published,
-            total_stored_events=self._total_stored,
-            storage_info=storage_info
+            total_published=self._total_published,
+            total_stored=self._total_stored,
+            storage=self._storage.info
         )
 
     def close(self) -> None:

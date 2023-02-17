@@ -2,7 +2,6 @@ import logging
 from datetime import datetime
 from typing import List, Tuple
 
-import anyio
 from fastapi import APIRouter, Depends, Query, WebSocket
 from fastapi.responses import StreamingResponse
 from motor.motor_asyncio import AsyncIOMotorCollection
@@ -10,32 +9,25 @@ from sse_starlette import EventSourceResponse
 
 from hyprxa.auth import BaseUser
 from hyprxa.base import BaseSubscriber, iter_subscribers
-from hyprxa.dependencies.auth import can_read, can_write
+from hyprxa.dependencies.auth import can_read, is_admin
 from hyprxa.dependencies.timeseries import (
-    find_one_unitop,
+    get_manager,
+    get_manager_dependency,
     get_subscribers,
     get_subscriptions,
-    get_timeseries_collection,
-    get_unitop,
-    get_unitop_collection,
-    get_unitops,
-    validate_sources
+    get_timeseries_collection
 )
+from hyprxa.dependencies.unitops import get_unitop
 from hyprxa.dependencies.util import get_file_writer, parse_timestamp
-from hyprxa.timeseries import (
-    AnySourceSubscriptionRequest,
-    AvailableSources,
-    SubscriptionMessage,
-    UnitOp,
-    UnitOpDocument,
-    UnitOpQueryResult,
-    get_timeseries,
-    SOURCES
-)
+from hyprxa.timeseries.manager import TimeseriesManager
+from hyprxa.timeseries.models import AnySourceSubscriptionRequest, SubscriptionMessage
+from hyprxa.timeseries.sources import AvailableSources, _SOURCES
+from hyprxa.timeseries.stream import get_timeseries
+from hyprxa.unitops.models import UnitOpDocument
 from hyprxa.util.filestream import FileWriter, chunked_transfer
-from hyprxa.util.formatting import format_event_document
-from hyprxa.util.status import Status, StatusOptions
+from hyprxa.util.formatting import format_timeseries_rows
 from hyprxa.util.sse import sse_handler
+from hyprxa.util.status import Status, StatusOptions
 from hyprxa.util.websockets import ws_handler
 
 
@@ -48,48 +40,7 @@ router = APIRouter(prefix="/timeseries", tags=["Timeseries"])
 @router.get("/sources", response_model=AvailableSources, dependencies=[Depends(can_read)])
 async def sources() -> AvailableSources:
     """Retrieve a list of the available data sources."""
-    return {"sources": [source.source for source in SOURCES]}
-
-
-@router.get("/unitops/{unitop}", response_model=UnitOpDocument, dependencies=[Depends(can_read)])
-async def unitop(
-    document: UnitOpDocument = Depends(get_unitop)
-) -> UnitOpDocument:
-    """Retrieve a unitop record."""
-    return document
-
-
-@router.get("/topics/search", response_model=UnitOpQueryResult, dependencies=[Depends(can_read)])
-async def unitops(
-    unitops: UnitOpQueryResult = Depends(get_unitops)
-) -> UnitOpQueryResult:
-    """Retrieve a collection of unitop records."""
-    return unitops
-
-
-@router.post("/unitops/save", response_model=Status)
-async def save(
-    unitop: UnitOp = Depends(validate_sources),
-    collection: AsyncIOMotorCollection = Depends(get_unitop_collection),
-    user: BaseUser = Depends(can_write)
-) -> Status:
-    """Save a topic to the database."""
-    await anyio.to_thread.run_sync(find_one_unitop.invalidate, unitop.name, collection)
-    result = await collection.update_one(
-        filter={"name": unitop.name},
-        update={
-            "$set": {
-                "data_mapping": unitop.data_mapping,
-                "meta": unitop.meta,
-                "modified_by": user.identity,
-                "modified_at": datetime.utcnow()
-            }
-        },
-        upsert=True
-    )
-    if result.modified_count > 0 or result.matched_count > 0 or result.upserted_id:
-        return Status(status=StatusOptions.OK)
-    return Status(status=StatusOptions.FAILED)
+    return {"sources": [source.source for source in _SOURCES]}
 
 
 @router.get("/stream/{unitop}", response_model=SubscriptionMessage, dependencies=[Depends(can_read)])
@@ -122,7 +73,7 @@ async def stream_ws(
 
 
 @router.get("/{unitop}/recorded", response_class=StreamingResponse, dependencies=[Depends(can_read)])
-async def timeseries(
+async def recorded(
     unitop: UnitOpDocument = Depends(get_unitop),
     subscriptions: AnySourceSubscriptionRequest = Depends(get_subscriptions),
     start_time: datetime = Depends(
@@ -140,8 +91,7 @@ async def timeseries(
     scan_rate: int = Query(default=5, alias="scanRate"),
     file_writer: FileWriter = Depends(get_file_writer),
 ) -> StreamingResponse:
-    """Get a batch of recorded events."""
-
+    """Get a batch of recorded timeseries data."""
     send = get_timeseries(
         collection=collection,
         subscriptions=subscriptions,
@@ -181,10 +131,28 @@ async def timeseries(
             send=send,
             buffer=buffer,
             writer=writer,
-            formatter=format_event_document,
+            formatter=format_timeseries_rows,
             logger=_LOGGER,
             chunk_size=chunk_size
         ),
         media_type=media_type,
         headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
+
+
+@router.post(
+    "/admin/manager/restart/{source}",
+    response_model=Status,
+    dependencies=[Depends(is_admin)],
+    tags=["Admin"]
+)
+async def reset_manager(
+    source: str,
+    manager: TimeseriesManager = Depends(get_manager_dependency)
+) -> Status:
+    """Close a manager. The next request requiring the source will start a
+    new manager."""
+    manager.close()
+    source = _SOURCES[source]
+    get_manager.invalidate(source)
+    return Status(status=StatusOptions.OK)

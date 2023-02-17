@@ -1,14 +1,12 @@
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import Enum
 from typing import Any, Dict, List, Sequence, Set
 
-from pydantic import create_model, validator
+from pydantic import validator
 
 from hyprxa.base.models import BaseSubscription, BrokerInfo
-from hyprxa.timeseries.sources import _SOURCES
-from hyprxa.util.models import BaseModel
+from hyprxa.util.models import BaseModel, StorageHandlerInfo
 
 
 
@@ -131,7 +129,6 @@ class ConnectionInfo(BaseModel):
 class ClientInfo(BaseModel):
     """Model for client statistics."""
     name: str
-    source: str
     closed: bool
     data_queue_size: int
     dropped_connection_queue_size: int
@@ -151,39 +148,12 @@ class LockInfo(BaseModel):
     uptime: int
 
 
-class ManagerInfo(BrokerInfo):
-    """Model for manager statistics."""
-    client_info: ClientInfo
-    lock_info: LockInfo
-    total_published_messages: int
-    total_stored_messages: int
-    storage_info: Dict[str, Any]
-
-
-def source_to_str(_, v: Enum) -> str:
-    """Convert source enum to string."""
-    return v.value
-
-
-ValidatedBaseSourceSubscription = lambda: create_model(
-    "BaseSourceSubscription",
-    source=(_SOURCES.compile_sources(), ...),
-    __base__=BaseSubscription,
-    __validators__={"_source_converter": validator("source", allow_reuse=True)(source_to_str)}
-)
-ValidatedAnySourceSubscription = lambda: create_model(
-    "AnySourceSubscription",
-    source=(_SOURCES.compile_sources(), ...),
-    __base__=AnySourceSubscription,
-    __validators__={"_source_converter": validator("source", allow_reuse=True)(source_to_str)}
-)
-ValidatedBaseSourceSubscriptionRequest = lambda model: create_model(
-    "BaseSourceSubscriptionRequest",
-    subscriptions=(Sequence[model], ...),
-    __base__=BaseSourceSubscriptionRequest
-)
-ValidatedAnySourceSubscriptionRequest = lambda model: create_model(
-    "AnySourceSubscriptionRequest",
-    subscriptions=(Sequence[model], ...),
-    __base__=AnySourceSubscriptionRequest
-)
+class TimeseriesManagerInfo(BrokerInfo):
+    """Model for timeseries manager statistics."""
+    source: str
+    client: ClientInfo
+    lock: LockInfo
+    storage_buffer_size: int
+    storage: StorageHandlerInfo
+    total_published: int
+    total_stored: int

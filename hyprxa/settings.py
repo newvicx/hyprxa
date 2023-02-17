@@ -22,7 +22,7 @@ from pydantic import (
     conint
 )
 
-from hyprxa.base import BaseBroker
+from hyprxa.base.broker import BaseBroker
 from hyprxa.events.handler import EventWorker, MongoEventHandler
 from hyprxa.events.manager import EventManager
 from hyprxa.timeseries.sources import Source

@@ -26,7 +26,7 @@ _LOGGER = logging.getLogger("hyprxa.base")
 class BaseBroker:
     """Data broker backed by a RabbitMQ exchange.
 
-    `BaseBroker` implements the common plumbing for both the `EventBus` and
+    `BaseBroker` implements the common plumbing for both the `EventManager` and
     `TimeseriesManager`.
     
     Args:
@@ -144,7 +144,7 @@ class BaseBroker:
             return
 
         runner: asyncio.Task = Context().run(self._loop.create_task, self.run())
-        runner.add_done_callback(lambda _: self._loop.create_task(self.close()))
+        runner.add_done_callback(lambda _: self.close())
         self._runner = runner
 
     async def subscribe(self, subscriptions: Sequence[BaseSubscription]) -> BaseSubscriber:

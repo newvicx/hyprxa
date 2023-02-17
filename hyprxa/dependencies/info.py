@@ -1,24 +1,21 @@
 from typing import List
 
-from fastapi import Depends
-
-from hyprxa.auth import BaseUser
-from hyprxa.base import BaseBroker, BrokerInfo
-from hyprxa.caching import singleton
-from hyprxa.dependencies.auth import is_admin
+from hyprxa.base.broker import BaseBroker
+from hyprxa.base.models import BrokerInfo
+from hyprxa.caching.singleton import singleton
 from hyprxa.util.models import BaseModel
 
 
 
-class APIInfo(BaseModel):
+class Info(BaseModel):
     status: str
-    broker_info: List[BrokerInfo | None]
+    info: List[BrokerInfo | None]
 
 
-async def debug_info(_: BaseUser = Depends(is_admin)) -> APIInfo:
-    """"Return diagnostic information related to the API."""
-    broker_info = [obj.info for obj in singleton if isinstance(obj, BaseBroker)]
-    return APIInfo(
+async def get_info() -> Info:
+    """"Return diagnostic information about brokers."""
+    info = [obj.info for obj in singleton if isinstance(obj, BaseBroker)]
+    return Info(
         status="ok",
-        brokers=broker_info
+        info=info
     )

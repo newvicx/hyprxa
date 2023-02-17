@@ -109,4 +109,4 @@ class BrokerInfo(BaseModel):
     active_subscriptions: int
     subscriber_capacity: int
     total_subscribers_serviced: int
-    subscriber_info: List[SubscriberInfo | None]
+    subscribers: List[SubscriberInfo | None]

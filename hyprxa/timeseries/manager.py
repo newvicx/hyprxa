@@ -10,11 +10,9 @@ import anyio
 from aiormq import Channel, Connection
 from pamqp import commands
 
-from hyprxa.base import (
-    BaseBroker,
-    BaseSubscriber,
-    SubscriptionLimitError
-)
+from hyprxa.base.broker import BaseBroker
+from hyprxa.base.exceptions import SubscriptionLimitError
+from hyprxa.base.subscriber import BaseSubscriber
 from hyprxa.timeseries.base import BaseClient
 from hyprxa.timeseries.exceptions import (
     ClientClosed,
@@ -27,8 +25,8 @@ from hyprxa.timeseries.handler import MongoTimeseriesHandler
 from hyprxa.timeseries.lock import SubscriptionLock
 from hyprxa.timeseries.models import (
     BaseSourceSubscription,
-    ManagerInfo,
-    SubscriptionMessage
+    SubscriptionMessage,
+    TimeseriesManagerInfo
 )
 from hyprxa.timeseries.sources import Source
 from hyprxa.util.asyncutils import add_event_loop_shutdown_callback
@@ -148,12 +146,12 @@ class TimeseriesManager(BaseBroker):
         self._total_stored = 0
 
     @property
-    def info(self) -> ManagerInfo:
+    def info(self) -> TimeseriesManagerInfo:
         """Return statistics on the manager instance. Useful for monitoring and
         debugging.
         """
         storage_info = self._storage.worker.info if self._storage.worker else None
-        return ManagerInfo(
+        return TimeseriesManagerInfo(
             name=self.__class__.__name__,
             closed=self.closed,
             status=self.status,
@@ -163,12 +161,13 @@ class TimeseriesManager(BaseBroker):
             active_subscriptions=len(self.subscriptions),
             subscriber_capacity=self.max_subscribers-len(self.subscribers),
             total_subscribers_serviced=self.subscribers_serviced,
-            subscriber_info=[subscriber.info for subscriber in self.subscribers.values()],
-            client_info=self._client.info,
-            lock_info=self._lock.info,
-            total_published_messages=self._total_published,
-            total_stored_messages=self._total_stored,
-            storage_info=storage_info
+            subscribers=[subscriber.info for subscriber in self.subscribers.values()],
+            client=self._client.info,
+            lock=self._lock.info,
+            total_published=self._total_published,
+            total_stored=self._total_stored,
+            storage=storage_info,
+            storage_buffer_size=self._storage_queue.qsize()
         )
         
     def close(self) -> None:

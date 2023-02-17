@@ -1,8 +1,9 @@
 from collections.abc import Iterable, MutableMapping, Sequence
 from enum import Enum
-from typing import Any, Dict, Tuple, Type
+from typing import Any, Dict, List, Tuple, Type
 
 from fastapi import Request, WebSocket
+from pydantic import BaseModel
 
 from hyprxa.auth.scopes import requires
 from hyprxa.base.subscriber import BaseSubscriber
@@ -83,6 +84,11 @@ class SourceMapping(MutableMapping):
 
     def __len__(self) -> int:
         return len(self._sources)
+    
+
+class AvailableSources(BaseModel):
+    """The available sources for the application."""
+    sources: List[str]
 
 
 _SOURCES = SourceMapping()

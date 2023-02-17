@@ -3,6 +3,7 @@ import queue
 import sys
 import threading
 from dataclasses import asdict
+from datetime import datetime
 from typing import Any
 
 import pymongo
@@ -10,6 +11,7 @@ from pymongo import MongoClient
 from pymongo.collection import Collection
 
 from hyprxa.events.models import EventDocument
+from hyprxa.util.models import StorageHandlerInfo, WorkerInfo
 from hyprxa.util.mongo import MongoWorker
 
 
@@ -125,6 +127,21 @@ class MongoEventHandler:
     def __init__(self, **kwargs: Any) -> None:
         self.kwargs = kwargs
         self._lock = threading.Lock()
+
+        self._created = datetime.utcnow()
+        self._workers_used = 0
+
+    @property
+    def info(self) -> StorageHandlerInfo:
+        worker = None
+        if self.worker is not None:
+            worker = WorkerInfo.parse_obj(self.worker.info)
+        return StorageHandlerInfo(
+            created=self._created,
+            uptime=(datetime.utcnow() - self._created).total_seconds(),
+            workers_used=self._workers_used,
+            worker=worker
+        )
 
     def start_worker(self) -> EventWorker:
         """Start the event worker thread."""

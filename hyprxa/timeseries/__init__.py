@@ -2,7 +2,7 @@ from .base import BaseClient, BaseConnection
 from .exceptions import (
     ClientClosed,
     ClientSubscriptionError,
-    ManagerClosed,
+    TimeseriesManagerClosed,
     SubscriptionLockError,
     TimeseriesError
 )
@@ -34,7 +34,7 @@ __all__ = [
     "BaseConnection",
     "ClientClosed",
     "ClientSubscriptionError",
-    "ManagerClosed",
+    "TimeseriesManagerClosed",
     "SubscriptionLockError",
     "TimeseriesError",
     "MongoTimeseriesHandler",

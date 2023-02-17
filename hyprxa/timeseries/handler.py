@@ -4,6 +4,7 @@ import sys
 import threading
 from collections.abc import Iterable
 from dataclasses import asdict
+from datetime import datetime
 from typing import Any
 
 import pymongo
@@ -12,6 +13,7 @@ from pymongo.collection import Collection
 from pymongo.errors import BulkWriteError, OperationFailure
 
 from hyprxa.timeseries.models import TimeseriesDocument
+from hyprxa.util.models import StorageHandlerInfo, WorkerInfo
 from hyprxa.util.mongo import MongoWorker
 
 
@@ -139,6 +141,21 @@ class MongoTimeseriesHandler:
         self.kwargs = kwargs
         self._lock = threading.Lock()
 
+        self._created = datetime.utcnow()
+        self._workers_used = 0
+
+    @property
+    def info(self) -> StorageHandlerInfo:
+        worker = None
+        if self.worker is not None:
+            worker = WorkerInfo.parse_obj(self.worker.info)
+        return StorageHandlerInfo(
+            created=self._created,
+            uptime=(datetime.utcnow() - self._created).total_seconds(),
+            workers_used=self._workers_used,
+            worker=worker
+        )
+
     def start_worker(self) -> TimeseriesWorker:
         """Start the timeseries worker thread."""
         worker = TimeseriesWorker(**self.kwargs)
@@ -155,12 +172,14 @@ class MongoTimeseriesHandler:
         """
         if self.worker is None:
             worker = self.start_worker()
+            self._workers_used += 1
             self.worker = worker
         elif not self.worker.is_running:
             worker, self.worker = self.worker, None
             if not worker.is_stopped:
                 worker.stop()
             worker = self.start_worker()
+            self._workers_used += 1
             self.worker = worker
         return self.worker
 
