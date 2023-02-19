@@ -2,7 +2,7 @@ import functools
 import hashlib
 import inspect
 import logging
-from types import FunctionType
+from types import FunctionType, MethodType
 from typing import Any, Callable, Generator, List, Tuple
 
 from hyprxa.caching.base import BaseCachedFunction
@@ -136,17 +136,16 @@ def make_value_key(
         arg_pairs.append((kw_name, kw_val))
 
     # Create the hash from each arg value, except for those args whose name
-    # starts with "_", "self", or "cls"
+    # starts with "_".
     args_hasher = hashlib.new("md5")
+
+    if isinstance(func, MethodType):
+        arg_pairs = arg_pairs[1:]
+
     for arg_name, arg_value in arg_pairs:
         if arg_name is not None and arg_name.startswith("_"):
             _LOGGER.debug("Not hashing %s because it starts with _", arg_name)
             continue
-        elif arg_name == "self":
-            _LOGGER.debug("Not hashing object instance (%s)", arg_name)
-            continue
-        elif arg_name == "cls":
-            _LOGGER.debug("Not hashing object type (%s)", arg_name)
         try:
             update_hash(
                 (arg_name, arg_value),
@@ -230,7 +229,7 @@ def create_cached_func_wrapper(
     func: FunctionType,
     cached_func: BaseCachedFunction
 ) -> Callable[..., Any]:
-    """Implements common plumbing for `memo` and `singleton` api's."""
+    """Implements common plumbing for `@memo` and `@singleton` api's."""
     @functools.wraps(func)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
         """Wraps a sync function to be cached."""

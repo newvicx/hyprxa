@@ -13,11 +13,29 @@ from hyprxa.base.models import BaseSubscription, SubscriberCodes, SubscriberInfo
 
 
 
-_LOGGER = logging.getLogger("hyprxa.base")
+_LOGGER = logging.getLogger("hyprxa.base.subscriber")
 
 
 class BaseSubscriber:
-    """Base implementation for a subscriber."""
+    """Base implementation of a subscriber.
+    
+    Subscribers should only be created by a manager using the `subscribe` method.
+
+    The preferred method for using a subscriber is with a context manager.
+    >>> with await manager.subscribe(...) as subscriber:
+    ...     async for msg in subscriber:
+    ...         ...
+
+    Subscribers can be stopped by a manager if there is an issue with the
+    subscriptions or the manager's connection to RabbitMQ is lost and the manager
+    cannot re-establish the connection. If that happens, the iterator is exhausted.
+    Hyprxa has a `DroppedSubscriber` error for this situation...
+    >>> with await manager.subscribe(...) as subscriber:
+    ...     async for msg in subscriber:
+    ...         ...
+    ...     else:
+    ...         raise DroppedSubscriber()
+    """
     def __init__(self) -> None:
         self._subscriptions: Set[BaseSubscription] = set()
         self._data: Deque[str] = None

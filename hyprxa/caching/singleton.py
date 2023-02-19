@@ -191,6 +191,14 @@ class SingletonAPI:
         >>> # You can also clear all cached entries
         >>> singleton.clear()
 
+        A singleton function's cache can be procedurally invalidated...
+        >>> @singleton
+        ... def get_database_session(_sessionmaker, url):
+        ...     # Create a database connection object that points to the URL.
+        ...     return connection
+        >>> # Invalidate the session for a particular URL.
+        >>> get_database_session.invalidate(_sessionmaker, url)
+
         You can iterate over all singletons in the cache...
         >>> for obj in singleton:
         ...     ...
@@ -201,6 +209,8 @@ class SingletonAPI:
                 wrapper = create_cached_func_wrapper(f, cached_func)
                 wrapper.clear = clear_cached_func(cached_func)
                 wrapper.invalidate = invalidate_cached_value(cached_func)
+                # Attach the function signature to the wrapper so the memoized
+                # function can be used as a dependency.
                 wrapper.__signature__ = inspect.signature(f)
                 return wrapper
             return decorator

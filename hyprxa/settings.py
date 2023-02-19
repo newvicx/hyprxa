@@ -22,7 +22,7 @@ from pydantic import (
     conint
 )
 
-from hyprxa.base.broker import BaseBroker
+from hyprxa.base.manager import BaseManager
 from hyprxa.events.handler import EventWorker, MongoEventHandler
 from hyprxa.events.manager import EventManager
 from hyprxa.timeseries.sources import Source
@@ -37,7 +37,7 @@ from hyprxa.util.mongo import MongoWorker
 
 
 
-_BRKR = inspect.signature(BaseBroker).parameters
+_BM = inspect.signature(BaseManager).parameters
 _EM = inspect.signature(EventManager).parameters
 _LK = inspect.signature(SubscriptionLock).parameters
 _MW = inspect.signature(MongoWorker).parameters
@@ -447,17 +447,17 @@ class EventBusSettings(BaseSettings):
         exchange. Defaults to 'hyprxa.exchange.events'""")
     )
     max_subscribers: conint(gt=0) = Field(
-        default=_BRKR["max_subscribers"].default,
+        default=_BM["max_subscribers"].default,
         description=format_docstring("""The maximum number of concurrent
         subscribers which can run by a single event manager instance. Defaults to `{}`
-        """.format(_BRKR["max_subscribers"].default))
+        """.format(_BM["max_subscribers"].default))
     )
     maxlen: conint(gt=0) = Field(
-        default=_BRKR["maxlen"].default,
+        default=_BM["maxlen"].default,
         description=format_docstring("""The maximum number of events that can
         buffered on a subscriber. If the buffer limit on a subscriber is
         reached, the oldest events will be evicted as new events are added.
-        Defaults to `{}`""".format(_BRKR["maxlen"].default))
+        Defaults to `{}`""".format(_BM["maxlen"].default))
     )
     max_buffered_events: conint(gt=0) = Field(
         default=_EM["max_buffered_events"].default,
@@ -466,28 +466,28 @@ class EventBusSettings(BaseSettings):
         to enqueue any published events. Defaults to `{}""".format(_EM["max_buffered_events"].default))
     )
     subscription_timeout: confloat(gt=0) = Field(
-        default=_BRKR["subscription_timeout"].default,
+        default=_BM["subscription_timeout"].default,
         description=format_docstring("""The time to wait (in seconds) for the
-        broker to be ready before rejecting the subscription request. Defaults
-        to `{}`.""".format(_BRKR["subscription_timeout"].default))
+        manager to be ready before rejecting the subscription request. Defaults
+        to `{}`.""".format(_BM["subscription_timeout"].default))
     )
     reconnect_timeout: confloat(gt=0) = Field(
-        default=_BRKR["reconnect_timeout"].default,
+        default=_BM["reconnect_timeout"].default,
         description=format_docstring("""The time to wait (in seconds) for the
-        broker to be ready before dropping an already connected subscriber.
-        Defaults to `{}`""".format(_BRKR["reconnect_timeout"].default))
+        manager to be ready before dropping an already connected subscriber.
+        Defaults to `{}`""".format(_BM["reconnect_timeout"].default))
     )
     max_backoff: confloat(gt=0) = Field(
-        default=_BRKR["max_backoff"].default,
+        default=_BM["max_backoff"].default,
         description=format_docstring("""The maximum backoff time (in seconds) to
         wait before trying to reconnect to RabbitMQ. Defaults to `{}`
-        """.format(_BRKR["max_backoff"].default))
+        """.format(_BM["max_backoff"].default))
     )
     initial_backoff: confloat(gt=0) = Field(
-        default=_BRKR["initial_backoff"].default,
+        default=_BM["initial_backoff"].default,
         description=format_docstring("""The minimum amount of time (in seconds)
         to wait before trying to reconnect to RabbitMQ. Defaults to `{}`
-        """.format(_BRKR["initial_backoff"].default))
+        """.format(_BM["initial_backoff"].default))
     )
 
     async def get_manager(self) -> EventManager:
@@ -600,17 +600,17 @@ class TimeseriesManagerSettings(BaseSettings):
         data exchange. Defaults to 'hyprxa.exchange.timeseries'""")
     )
     max_subscribers: conint(gt=0) = Field(
-        default=_BRKR["max_subscribers"].default,
+        default=_BM["max_subscribers"].default,
         description=format_docstring("""The maximum number of concurrent
         subscribers which can run by a single event manager instance. Defaults to `{}`
-        """.format(_BRKR["max_subscribers"].default))
+        """.format(_BM["max_subscribers"].default))
     )
     maxlen: conint(gt=0) = Field(
-        default=_BRKR["maxlen"].default,
+        default=_BM["maxlen"].default,
         description=format_docstring("""The maximum number of messages that can
         buffered on a subscriber. If the buffer limit on a subscriber is
         reached, the oldest messages will be evicted as new messages are added.
-        Defaults to `{}`""".format(_BRKR["maxlen"].default))
+        Defaults to `{}`""".format(_BM["maxlen"].default))
     )
     max_buffered_messages: conint(gt=0) = Field(
         default=_TM["max_buffered_messages"].default,
@@ -620,28 +620,28 @@ class TimeseriesManagerSettings(BaseSettings):
         drains. Defaults to `{}""".format(_TM["max_buffered_messages"].default))
     )
     subscription_timeout: confloat(gt=0) = Field(
-        default=_BRKR["subscription_timeout"].default,
+        default=_BM["subscription_timeout"].default,
         description=format_docstring("""The time to wait (in seconds) for the
-        broker to be ready before rejecting the subscription request. Defaults
-        to `{}`.""".format(_BRKR["subscription_timeout"].default))
+        manager to be ready before rejecting the subscription request. Defaults
+        to `{}`.""".format(_BM["subscription_timeout"].default))
     )
     reconnect_timeout: confloat(gt=0) = Field(
-        default=_BRKR["reconnect_timeout"].default,
+        default=_BM["reconnect_timeout"].default,
         description=format_docstring("""The time to wait (in seconds) for the
-        broker to be ready before dropping an already connected subscriber.
-        Defaults to `{}`""".format(_BRKR["reconnect_timeout"].default))
+        manager to be ready before dropping an already connected subscriber.
+        Defaults to `{}`""".format(_BM["reconnect_timeout"].default))
     )
     max_backoff: confloat(gt=0) = Field(
-        default=_BRKR["max_backoff"].default,
+        default=_BM["max_backoff"].default,
         description=format_docstring("""The maximum backoff time (in seconds) to
         wait before trying to reconnect to RabbitMQ. Defaults to `{}`
-        """.format(_BRKR["max_backoff"].default))
+        """.format(_BM["max_backoff"].default))
     )
     initial_backoff: confloat(gt=0) = Field(
-        default=_BRKR["initial_backoff"].default,
+        default=_BM["initial_backoff"].default,
         description=format_docstring("""The minimum amount of time (in seconds)
         to wait before trying to reconnect to RabbitMQ. Defaults to `{}`
-        """.format(_BRKR["initial_backoff"].default))
+        """.format(_BM["initial_backoff"].default))
     )
     max_failed: conint(gt=0) = Field(
         default=_TM["max_failed"].default,

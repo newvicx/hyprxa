@@ -1,6 +1,6 @@
 from .exceptions import (
-    BrokerClosed,
-    BrokerError,
+    ManagerClosed,
+    ManagerError,
     DroppedSubscriber,
     SubscriptionError,
     SubscriptionLimitError,
@@ -16,8 +16,8 @@ from .subscriber import BaseSubscriber, iter_subscriber, iter_subscribers
 
 
 __all__ = [
-    "BrokerClosed",
-    "BrokerError",
+    "ManagerClosed",
+    "ManagerError",
     "DroppedSubscriber",
     "SubscriptionError",
     "SubscriptionLimitError",

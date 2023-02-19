@@ -114,18 +114,8 @@ class MemoCache(BaseCache):
         _LOGGER.debug("Memcached delete result %s: %s", key, deleted)
 
     def _get_memcached_key(self, value_key: str) -> str:
+        """Get the memcached key from the function cache key and value key."""
         return f"{self.key}-{value_key}"
-
-
-def get_cache_control(ttl: int | None) -> int:
-    """Returns the TTL of the cached item in seconds.
-    
-    This value can be sent along in a cache control header.
-    """
-    if ttl is None or ttl > 31_536_000:
-        return 31_536_000
-    else:
-        return ttl
 
 
 class MemoizedFunction(BaseCachedFunction):
@@ -291,6 +281,8 @@ class MemoAPI:
                 wrapper = create_cached_func_wrapper(f, cached_func)
                 wrapper.invalidate = invalidate_cached_value(cached_func)
                 wrapper.ttl = ttl_seconds
+                # Attach the function signature to the wrapper so the memoized
+                # function can be used as a dependency.
                 wrapper.__signature__ = inspect.signature(f)
                 return wrapper
             return decorator
@@ -314,9 +306,8 @@ class MemoAPI:
             _LOGGER.debug("Creating new memcached client")
             client = MEMCACHED_SETTINGS.get_client()
             cls.client = client
-            # We need a limiter otherwise if more than `max_pool_size` threads
-            # attempt to acquire a connection from the client we will get a
-            # `RuntimeError`.`
+            # Limiter prevents more than `max_pool_size` threads from concurrent
+            # access which would lead to a `RuntimeError`.
             cls.limiter = MEMCACHED_SETTINGS.get_limiter()
             return client
 

@@ -10,7 +10,7 @@ from hyprxa.util.filestream import FileWriter, get_file_format_writer
 
 
 def get_file_writer(request: Request) -> FileWriter:
-    """Returns a writer/buffer/suffix combo for streaming files.
+    """Returns a buffer/writer/suffix/media type combo for streaming files.
     
     Defaults to csv writer if "accept" isnt present.
     """
@@ -22,9 +22,10 @@ def get_file_writer(request: Request) -> FileWriter:
 
 
 def parse_timestamp(query: Query, default_timedelta: int | None = None):
-    """Parse a str timestamp from a request. The timestamp is returned in UTC.
-    The input str timezone is assumed to be the application timezone unless
-    otherwise specified.
+    """Parse a str timestamp from a request.
+    
+    The timestamp is returned in UTC. The input str timezone is assumed to be
+    the application timezone unless otherwise specified.
     """
     if default_timedelta is not None:
         default_timedelta = timedelta(seconds=default_timedelta)
@@ -35,7 +36,9 @@ def parse_timestamp(query: Query, default_timedelta: int | None = None):
         if not time:
             return now - default_timedelta
         try:
-            return pendulum.instance(dateutil.parser.parse(time), tz=timezone).in_timezone("UTC").replace(tzinfo=None)
+            return pendulum.instance(
+                dateutil.parser.parse(time), tz=timezone
+            ).in_timezone("UTC").replace(tzinfo=None)
         except dateutil.parser.ParserError:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY)
     return wrapper

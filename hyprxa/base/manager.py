@@ -14,7 +14,7 @@ from aiormq.abc import DeliveredMessage
 from pamqp import commands
 
 from hyprxa.base.exceptions import SubscriptionTimeout
-from hyprxa.base.models import BaseSubscription, BrokerInfo, BrokerStatus
+from hyprxa.base.models import BaseSubscription, ManagerInfo, ManagerStatus
 from hyprxa.base.subscriber import BaseSubscriber
 from hyprxa.util.backoff import EqualJitterBackoff
 
@@ -23,35 +23,35 @@ from hyprxa.util.backoff import EqualJitterBackoff
 _LOGGER = logging.getLogger("hyprxa.base")
 
 
-class BaseBroker:
-    """Data broker backed by a RabbitMQ exchange.
+class BaseManager:
+    """Data manager backed by a RabbitMQ exchange.
 
-    `BaseBroker` implements the common plumbing for both the `EventManager` and
+    `BaseManager` implements the common plumbing for both the `EventManager` and
     `TimeseriesManager`.
     
     Args:
         factory: A callable that returns an `aiormq.Connection`.
         exchange: The exchange name to use.
         max_subscribers: The maximum number of concurrent subscribers which can
-            run by a single broker. If the limit is reached, the broker will
+            run by a single manager. If the limit is reached, the manager will
             refuse the attempt and raise a `SubscriptionLimitError`.
         maxlen: The maximum number of events that can buffered on the subscriber.
             If the buffer limit on the subscriber is reached, the oldest events
             will be evicted as new events are added.
-        subscription_timeout: The time to wait for the broker to be ready
+        subscription_timeout: The time to wait for the manager to be ready
             before rejecting the subscription request.
-        reconnect_timeout: The time to wait for the broker to be ready
+        reconnect_timeout: The time to wait for the manager to be ready
             before dropping an already connected subscriber.
         max_backoff: The maximum backoff time in seconds to wait before trying
-            to reconnect to the broker.
+            to reconnect to the manager.
         initial_backoff: The minimum amount of time in seconds to wait before
-            trying to reconnect to the broker.
+            trying to reconnect to the manager.
     """
     def __init__(
         self,
         factory: Callable[[], Connection],
         exchange: str,
-        max_subscribers: int = 200,
+        max_subscribers: int = 100,
         maxlen: int = 100,
         subscription_timeout: float = 5,
         reconnect_timeout: float = 60,
@@ -81,22 +81,22 @@ class BaseBroker:
 
     @property
     def backoff(self) -> EqualJitterBackoff:
-        """Returns the backoff instance for the broker."""
+        """Returns the backoff instance for the manager."""
         return self._backoff
 
     @property
     def closed(self) -> bool:
-        """`True` if the broker is closed."""
+        """`True` if the manager is closed."""
         return self._runner is None or self._runner.done()
 
     @property
-    def info(self) -> BrokerInfo:
-        """Return current information on the broker."""
+    def info(self) -> ManagerInfo:
+        """Return current information on the manager."""
         raise NotImplementedError()
     
     @property
     def exchange(self) -> str:
-        """Returns the exchange name the broker declared on the RabbitMQ server."""
+        """Returns the exchange name the manager declared on the RabbitMQ server."""
         return self._exchange
 
     @property
@@ -105,20 +105,20 @@ class BaseBroker:
         return self._max_subscribers
 
     @property
-    def status(self) -> BrokerStatus:
+    def status(self) -> ManagerStatus:
         """Return the status of the RabbitMQ connection."""
         if self._connection is not None and not self._connection.is_closed:
-            return BrokerStatus.CONNECTED.value
-        return BrokerStatus.DISCONNECTED.value
+            return ManagerStatus.CONNECTED.value
+        return ManagerStatus.DISCONNECTED.value
 
     @property
     def subscribers(self) -> Dict[asyncio.Future, BaseSubscriber]:
-        """Returns all broker subscribers."""
+        """Returns all manager subscribers."""
         return self._subscribers
 
     @property
     def subscribers_serviced(self) -> int:
-        """Returns the number of subscribers serviced by this broker."""
+        """Returns the number of subscribers serviced by this manager."""
         return self._subscribers_serviced
 
     @property
@@ -131,7 +131,7 @@ class BaseBroker:
         return subscriptions
 
     def close(self) -> None:
-        """Close the broker."""
+        """Close the manager."""
         for fut in itertools.chain(self._subscribers.keys(), self._background):
             fut.cancel()
         fut, self._runner = self._runner, None
@@ -139,7 +139,7 @@ class BaseBroker:
             fut.cancel()
 
     async def start(self) -> None:
-        """Start the broker."""
+        """Start the manager."""
         if not self.closed:
             return
 
@@ -148,7 +148,7 @@ class BaseBroker:
         self._runner = runner
 
     async def subscribe(self, subscriptions: Sequence[BaseSubscription]) -> BaseSubscriber:
-        """Subscribe to a sequence of subscriptions on the broker.
+        """Subscribe to a sequence of subscriptions on the manager.
         
         Args:
             subscriptions: The subscriptions to subscriber to.
@@ -157,8 +157,8 @@ class BaseBroker:
             subscriber: The event subscriber instance.
 
         Raises:
-            BrokerClosed: The broker is closed.
-            SubscriptionLimitError: The broker is maxed out on subscribers.
+            ManagerClosed: The manager is closed.
+            SubscriptionLimitError: The manager is maxed out on subscribers.
             SubscriptionTimeout: Timed out waiting for rabbitmq connection.
         """
         raise NotImplementedError()
@@ -176,11 +176,11 @@ class BaseBroker:
         raise NotImplementedError()
 
     async def run(self) -> None:
-        """Manage background tasks for broker."""
+        """Manage background tasks for manager."""
         raise NotImplementedError()
 
     async def manage_connection(self) -> None:
-        """Manages RabbitMQ connection for broker."""
+        """Manages RabbitMQ connection for manager."""
         raise NotImplementedError()
 
     def subscriber_lost(self, fut: asyncio.Future) -> None:
@@ -196,7 +196,7 @@ class BaseBroker:
 
     def subscriber_disconnected(self, fut: asyncio.Future) -> None:
         """Callback after connection between subscriber and broke is lost due to
-        either a subscriber or broker disconnect.
+        either a subscriber or manager disconnect.
         ."""
         _LOGGER.debug("Subscriber disconnect")
         assert fut in self._subscriber_connections
@@ -207,8 +207,8 @@ class BaseBroker:
         if e is not None:
             _LOGGER.warning("Error in subscriber connection", exc_info=e)
         if not subscriber.stopped:
-            # Connection lost due to broker disconnect, re-establish after broker
-            # connection is re-established.
+            # Connection lost due to RabbitMQ disconnect, re-establish subscriber
+            # connection after manager connection is re-established.
             _LOGGER.debug("Attempting to reconnect subscriber")
             self.add_background_task(self._reconnect_subscriber, subscriber)
 
@@ -217,7 +217,7 @@ class BaseBroker:
         subscriber: BaseSubscriber,
         subscriptions: Set[BaseSubscription]
     ) -> None:
-        """Add a subscriber to the broker."""
+        """Add a subscriber to the manager."""
         fut = subscriber.start(subscriptions=subscriptions, maxlen=self._maxlen)
         fut.add_done_callback(self.subscriber_lost)
         self._subscribers[fut] = subscriber
@@ -231,7 +231,7 @@ class BaseBroker:
         callbacks: List[Callable[[asyncio.Future], None]] = [],
         **kwargs: Any
     ) -> None:
-        """Add a background task to the broker."""
+        """Add a background task to the manager."""
         fut = self._loop.create_task(coro(*args, **kwargs))
         for callback in callbacks:
             fut.add_done_callback(callback)
@@ -259,7 +259,7 @@ class BaseBroker:
         return self._factory()
 
     def remove_connection(self) -> None:
-        """Remove the connection from the broker. New subscribers will not
+        """Remove the connection from the manager. New subscribers will not
         use the existing connection. Drops all subscriber connections.
         """
         self._ready.clear()
@@ -267,7 +267,7 @@ class BaseBroker:
         for fut in self._subscriber_connections.keys(): fut.cancel()
 
     def set_connection(self, connection: Connection) -> None:
-        """Set the connection for the broker. New subscribers will use this
+        """Set the connection for the manager. New subscribers will use this
         connection.
         """
         self._connection = connection
@@ -275,12 +275,12 @@ class BaseBroker:
         _LOGGER.debug("Connection established")
 
     async def wait(self, timeout: float | None = None) -> Connection:
-        """Wait for broker connection to be ready."""
+        """Wait for RabbitMQ connection to be ready."""
         timeout = timeout or self._subscription_timeout
         try:
             await asyncio.wait_for(self._ready.wait(), timeout=timeout)
         except asyncio.TimeoutError as e:
-            raise SubscriptionTimeout("Timed out waiting for broker to be ready.") from e
+            raise SubscriptionTimeout("Timed out waiting for connection to be ready.") from e
         else:
             assert self._connection is not None and not self._connection.is_closed
             return self._connection
@@ -295,7 +295,7 @@ class BaseBroker:
             _LOGGER.warning("Failed to reconnect subscriber", exc_info=True)
             subscriber.stop(e)
         else:
-            # Subscriber may have disconnected while we were waiting for broker
+            # Subscriber may have disconnected while we were waiting for manager
             # connection.
             if not subscriber.stopped:
                 self.connect_subscriber(subscriber, connection)

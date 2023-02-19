@@ -38,7 +38,7 @@ async def unitops(
 
 @router.post("/save", response_model=Status)
 async def save(
-    unitop: UnitOp = Depends(validate_sources()),
+    unitop: UnitOp = Depends(validate_sources),
     collection: AsyncIOMotorCollection = Depends(get_unitop_collection),
     user: BaseUser = Depends(can_write)
 ) -> Status:

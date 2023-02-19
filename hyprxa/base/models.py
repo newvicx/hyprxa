@@ -82,8 +82,8 @@ class SubscriberCodes(IntEnum):
     DATA = 2
 
 
-class BrokerStatus(str, Enum):
-    """Status of RabbitMQ broker connection."""
+class ManagerStatus(str, Enum):
+    """Status of manager connection to RabbitMQ."""
     CONNECTED = "connected"
     DISCONNECTED = "disconnected"
 
@@ -98,11 +98,11 @@ class SubscriberInfo(BaseModel):
     total_subscriptions: int
 
 
-class BrokerInfo(BaseModel):
+class ManagerInfo(BaseModel):
     """Model for manager statistics."""
     name: str
     closed: bool
-    status: BrokerStatus
+    status: ManagerStatus
     created: datetime
     uptime: int
     active_subscribers: int

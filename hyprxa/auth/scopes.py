@@ -1,6 +1,6 @@
 from collections.abc import Collection
 
-from fastapi import HTTPException, WebSocket, status
+from fastapi import HTTPException, status
 from fastapi.requests import HTTPConnection
 from starlette.authentication import AuthCredentials
 from starlette.types import Scope
@@ -14,7 +14,7 @@ class requires:
     """Dependency for route authorization.
     
     The `AuthenticationMiddleware` must be installed in order to use this class.
-    If the middleware is not installed, a `NotConfiguredError` will be raised.
+    If the middleware is not installed, a `NotConfiguredError` is raised.
 
     Args:
         scopes: The required scopes to access the route.
@@ -39,8 +39,7 @@ class requires:
     ...     # You now need to have 'ADMIN' and 'SUPERADMIN' scopes to access this
     ...     ...
     
-    Its pretty common that your API will have to go out to a different service to
-    access data. The target service may have layered scopes that grant increasing
+    Your organization may have layered permissions that grant increasing
     amounts of access (eg. READ, READ/WRITE, ADMIN). All scopes allow reading
     data in this case but the user may only belong to one group (eg. READ/WRITE).
     For this we can specify that a user have 'all' or 'any' of the scopes...
@@ -77,7 +76,7 @@ class requires:
     Note: For websocket routes you must pass `requires` as a dependency directly
     into the path operation. This is because websocket routes do not propagate
     dependencies from the parent router. For more information see
-    [this](https://github.com/tiangolo/fastapi/issues/4957) issue.
+    [4957](https://github.com/tiangolo/fastapi/issues/4957).
     """
     def __init__(
         self,

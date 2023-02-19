@@ -164,6 +164,7 @@ class MongoTimeseriesHandler:
         if not worker.is_running:
             worker.stop()
             raise TimeoutError("Timed out waiting for worker thread to be ready.")
+        self._workers_used += 1
         return worker
 
     def get_worker(self) -> TimeseriesWorker:
@@ -172,14 +173,12 @@ class MongoTimeseriesHandler:
         """
         if self.worker is None:
             worker = self.start_worker()
-            self._workers_used += 1
             self.worker = worker
         elif not self.worker.is_running:
             worker, self.worker = self.worker, None
             if not worker.is_stopped:
                 worker.stop()
             worker = self.start_worker()
-            self._workers_used += 1
             self.worker = worker
         return self.worker
 

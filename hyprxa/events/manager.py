@@ -9,7 +9,7 @@ import anyio
 from aiormq import Channel, Connection
 from pamqp import commands
 
-from hyprxa.base.broker import BaseBroker
+from hyprxa.base.manager import BaseManager
 from hyprxa.base.exceptions import SubscriptionLimitError
 from hyprxa.events.exceptions import EventManagerClosed
 from hyprxa.events.handler import MongoEventHandler
@@ -22,8 +22,8 @@ from hyprxa.topics.models import TopicSubscription
 _LOGGER = logging.getLogger("hyprxa.events.manager")
 
 
-class EventManager(BaseBroker):
-    """Publishes messages to RabbitMQ and manages event subscribers.
+class EventManager(BaseManager):
+    """Publishes events to RabbitMQ and manages event subscribers.
     
     
     """
@@ -211,7 +211,7 @@ class EventManager(BaseBroker):
                     await connection.close(timeout=2)
 
     async def _publish_events(self, connection: Connection, exchange: str) -> None:
-        """Publish enqueued events to the broker."""
+        """Publish enqueued events to the manager."""
         channel = await connection.channel(publisher_confirms=False)
         await channel.exchange_declare(exchange=exchange, exchange_type="topic")
 

@@ -11,11 +11,10 @@ from hyprxa.auth import BaseUser
 from hyprxa.base import BaseSubscriber, iter_subscribers
 from hyprxa.dependencies.auth import can_read, is_admin
 from hyprxa.dependencies.timeseries import (
-    get_manager,
-    get_manager_dependency,
     get_subscribers,
     get_subscriptions,
-    get_timeseries_collection
+    get_timeseries_collection,
+    get_timeseries_manager
 )
 from hyprxa.dependencies.unitops import get_unitop
 from hyprxa.dependencies.util import get_file_writer, parse_timestamp
@@ -148,11 +147,11 @@ async def recorded(
 )
 async def reset_manager(
     source: str,
-    manager: TimeseriesManager = Depends(get_manager_dependency)
+    manager: TimeseriesManager = Depends(get_timeseries_manager)
 ) -> Status:
-    """Close a manager. The next request requiring the source will start a
-    new manager."""
+    """Close a timeseries manager. The next request requiring the source will
+    start a new manager."""
     manager.close()
     source = _SOURCES[source]
-    get_manager.invalidate(source)
+    get_timeseries_manager.invalidate(source)
     return Status(status=StatusOptions.OK)

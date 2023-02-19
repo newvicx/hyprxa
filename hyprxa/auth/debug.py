@@ -7,11 +7,12 @@ from hyprxa.auth.models import BaseUser
 
 
 
-scheme = OAuth2PasswordBearer("/users/token", auto_error=False)
-
-
-async def enable_interactive_auth(_: str | None = Depends(scheme)) -> None:
+def enable_interactive_auth(path: str) -> None:
     """Dependency that enables authorization in the interactive docs."""
+    scheme = OAuth2PasswordBearer(path, auto_error=False)
+    async def async_wrapper(_: str | None = Depends(scheme)) -> None:
+        pass
+    return async_wrapper
 
 
 class DebugAuthenticationMiddleware(AuthenticationMiddleware):

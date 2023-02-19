@@ -10,7 +10,7 @@ import anyio
 from aiormq import Channel, Connection
 from pamqp import commands
 
-from hyprxa.base.broker import BaseBroker
+from hyprxa.base.manager import BaseManager
 from hyprxa.base.exceptions import SubscriptionLimitError
 from hyprxa.base.subscriber import BaseSubscriber
 from hyprxa.timeseries.base import BaseClient
@@ -36,7 +36,7 @@ from hyprxa.util.asyncutils import add_event_loop_shutdown_callback
 _LOGGER = logging.getLogger("hyprxa.timeseries.manager")
 
 
-class TimeseriesManager(BaseBroker):
+class TimeseriesManager(BaseManager):
     """Manages subscribers and a client connection to a data source.
     
     A `TimeseriesManager` receives standard formatted messages from clients

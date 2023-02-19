@@ -15,8 +15,8 @@ async def get_mongo_client() -> AsyncGenerator[AsyncIOMotorClient, None]:
     """Get an `AsyncIOMotorClient` for the scope of a query.
     
     This uses `SessionManager` so two coroutines can share the same client. This
-    should only be used for reads or single operation writes. For an exclusive
-    client, use `get_exclusive_mongo_client`.
+    should only be used for reads or atomic writes. For an exclusive client,
+    use `get_exclusive_mongo_client`.
     """
     async with _session.get_client() as client:
         yield client

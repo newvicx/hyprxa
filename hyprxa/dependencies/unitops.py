@@ -88,23 +88,21 @@ async def get_unitops(
     return UnitOpQueryResult()
 
 
-def validate_sources() -> UnitOp:
+async def validate_sources(unitop: UnitOp) -> UnitOp:
     """Validate that sources in unitop data mapping are valid."""
     subscription_model = ValidatedAnySourceSubscription()
     unitop_model = ValidatedUnitOp(subscription_model)
-    async def async_wrapper(unitop: unitop_model) -> UnitOp:
-        try:
-            unitop_model(
-                name=unitop.name,
-                data_mapping=unitop.data_mapping,
-                meta=unitop.meta
-            )
-        except ValidationError as e:
-            # If we just re-raise, FastAPI will consider it a 500 error. We want 422
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=e.errors()
-            ) from e
-        else:
-            return unitop
-    return async_wrapper
+    try:
+        unitop_model(
+            name=unitop.name,
+            data_mapping=unitop.data_mapping,
+            meta=unitop.meta
+        )
+    except ValidationError as e:
+        # If we just re-raise, FastAPI will consider it a 500 error. We want 422
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=e.errors()
+        ) from e
+    else:
+        return unitop

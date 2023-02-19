@@ -30,7 +30,7 @@ async def logs(
     db: AsyncIOMotorClient = Depends(get_exclusive_mongo_client)
 ) -> EventSourceResponse:
     """Stream logs from the API. The logging configuration must be using the
-    `MongoLogHandler`
+    `MongoLogHandler`.
     """
     handlers = itertools.chain.from_iterable(
         [logging.getLogger(name).handlers for name in logging.root.manager.loggerDict]

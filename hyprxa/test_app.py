@@ -43,6 +43,7 @@ from hyprxa.settings import HYPRXA_SETTINGS, LOGGING_SETTINGS
 from hyprxa.token import token
 
 
+
 ADMIN_USER = BaseUser(
     username="admin",
     first_name="Christopher",

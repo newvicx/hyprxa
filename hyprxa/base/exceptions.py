@@ -2,27 +2,27 @@ from hyprxa.exceptions import HyprxaError
 
 
 
-class BrokerError(HyprxaError):
-    """Base exception for all data integration errors."""
+class ManagerError(HyprxaError):
+    """Base exception for all manager errors."""
 
 
-class SubscriptionError(BrokerError):
-    """Raised when a broker failed to subscribe to subscriptions."""
+class SubscriptionError(ManagerError):
+    """Raised when a manager failed to subscribe to subscriptions."""
 
 
 class SubscriptionLimitError(SubscriptionError):
-    """Raised by a broker when the maximum subscribers exist on the broker."""
+    """Raised by a manager when the maximum subscribers exist on the manager."""
 
 
 class SubscriptionTimeout(SubscriptionError):
-    """Raised by a broker when the timeout limit to subscribe is reached."""
+    """Raised by a manager when the timeout limit to subscribe is reached."""
 
 
-class BrokerClosed(BrokerError):
-    """Raised when attempting to subscribe to a broker instance is closed."""
+class ManagerClosed(ManagerError):
+    """Raised when attempting to subscribe to a closed manager."""
 
 
-class DroppedSubscriber(BrokerError):
-    """Rraised when a subscriber has been stopped by the broker while the
+class DroppedSubscriber(ManagerError):
+    """Rraised when a subscriber has been stopped by the manager while the
     subscriber is being iterated.
     """

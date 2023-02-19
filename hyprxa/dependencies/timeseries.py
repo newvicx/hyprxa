@@ -12,29 +12,21 @@ from hyprxa.exceptions import NotConfiguredError
 from hyprxa.settings import TIMESERIES_SETTINGS, TIMESERIES_MANAGER_SETTINGS
 from hyprxa.timeseries.manager import TimeseriesManager
 from hyprxa.timeseries.models import AnySourceSubscriptionRequest
-from hyprxa.timeseries.sources import Source, _SOURCES
+from hyprxa.timeseries.sources import _SOURCES
 from hyprxa.unitops.models import UnitOpDocument
 
 
 
 @singleton
-async def get_manager(source: Source) -> TimeseriesManager:
-    """Returns a singleton instance of a manager.
-    
-    This method should not be used as dependency in a path operation. Use
-    `get_subscribers`, or `get_manager_dependency` instead.
-    """
-    return await TIMESERIES_MANAGER_SETTINGS.get_manager(source)
-
-
-async def get_manager_dependency(source: str) -> TimeseriesManager:
+async def get_timeseries_manager(source: str) -> TimeseriesManager:
+    """Returns a singleton instance of a manager."""
     if source not in _SOURCES:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"{source} is not a registered source."
         )
     source = _SOURCES[source]
-    return await get_manager(source)
+    return await TIMESERIES_MANAGER_SETTINGS.get_manager(source)
 
 
 async def get_timeseries_collection(
@@ -54,12 +46,12 @@ async def get_subscriptions(
     )
 
     groups = subscriptions.group()
-    for source_id in groups.keys():
-        if source_id not in _SOURCES:
+    for source_ in groups.keys():
+        if source_ not in _SOURCES:
             # The source might no longer be used. In which case the unitop needs
             # to be updated to remove it.
-            raise NotConfiguredError(f"{source_id} is not registered with application.")
-        source = _SOURCES[source_id]
+            raise NotConfiguredError(f"{source_} is not registered with application.")
+        source = _SOURCES[source_]
         await source.is_authorized(connection)
     return subscriptions
 
@@ -70,14 +62,13 @@ async def get_subscribers(
     """Create subscribers and subscribe to all sources in a unitop."""
     groups = subscriptions.group()
     managers: Dict[str, TimeseriesManager] = {}
-    for source_id in groups.keys():
-        source = _SOURCES[source_id]
-        manager = await get_manager(source)
-        managers[source.source] = manager
+    for source in groups.keys():
+        manager = await get_timeseries_manager(source)
+        managers[source] = manager
     
     subscribers: List[BaseSubscriber] = []
-    for source_id, subscriptions in groups.items():
-        manager = managers[source_id]
+    for source, subscriptions in groups.items():
+        manager = managers[source]
         subscriber = await manager.subscribe(subscriptions)
         subscribers.append(subscriber)
     

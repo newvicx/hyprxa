@@ -8,12 +8,12 @@ from starlette.authentication import BaseUser as StarletteBaseUser
 
 
 
-_LOGGER = logging.getLogger("hyprxa.auth.models")
+_LOGGER = logging.getLogger("hyprxa.auth")
 
 
 
 class BaseUser(BaseModel, StarletteBaseUser):
-    """Base model for all commandcenter users."""
+    """Base model for all hyprxa users."""
     username: str
     first_name: str | None
     last_name: str | None

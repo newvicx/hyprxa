@@ -151,6 +151,7 @@ class MongoEventHandler:
         if not worker.is_running:
             worker.stop()
             raise TimeoutError("Timed out waiting for worker thread to be ready.")
+        self._workers_used += 1
         return worker
 
     def get_worker(self) -> EventWorker:

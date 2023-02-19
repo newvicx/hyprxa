@@ -1,13 +1,13 @@
 import logging
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, Query, WebSocket, status
+from fastapi import APIRouter, Depends, Query, WebSocket
 from fastapi.responses import StreamingResponse
 from motor.motor_asyncio import AsyncIOMotorCollection
 from sse_starlette import EventSourceResponse
 
 from hyprxa.auth import BaseUser
-from hyprxa.base import SubscriptionError, iter_subscriber
+from hyprxa.base import iter_subscriber
 from hyprxa.dependencies.auth import can_read, can_write, is_admin
 from hyprxa.dependencies.events import (
     get_event,
@@ -19,12 +19,13 @@ from hyprxa.dependencies.topics import get_topic
 from hyprxa.dependencies.util import get_file_writer, parse_timestamp
 from hyprxa.events.manager import EventManager
 from hyprxa.events.models import Event, EventDocument
-from hyprxa.events.stream import format_event_document, get_events
+from hyprxa.events.stream import get_events
 from hyprxa.topics.models import (
     TopicDocument,
     TopicSubscription
 )
 from hyprxa.util.filestream import FileWriter, chunked_transfer
+from hyprxa.util.formatting import format_event_row
 from hyprxa.util.status import Status, StatusOptions
 from hyprxa.util.sse import sse_handler
 from hyprxa.util.websockets import ws_handler
@@ -47,7 +48,7 @@ async def publish(
     return Status(status=StatusOptions.FAILED)
 
 
-@router.get("/stream/{topic}", response_model=Event, dependencies=[Depends(can_read)])
+@router.get("/stream/{topic}", response_class=EventSourceResponse, dependencies=[Depends(can_read)])
 async def stream(
     topic: TopicDocument = Depends(get_topic),
     manager: EventManager = Depends(get_event_manager),
@@ -72,20 +73,10 @@ async def stream_ws(
     routing_key: str | None = Query(default=None, alias="routingKey")
 ) -> Event:
     """Subscribe to a topic and stream events over the websocket protocol."""
+    subscriptions = [TopicSubscription(topic=topic.topic, routing_key=routing_key)]
+    subscriber = await manager.subscribe(subscriptions=subscriptions)
     try:
-        subscriptions = [TopicSubscription(topic=topic.topic, routing_key=routing_key)]
-        try:
-            subscriber = await manager.subscribe(subscriptions=subscriptions)
-        except SubscriptionError:
-            _LOGGER.warning("Refused connection due to a subscription error", exc_info=True)
-            await websocket.close(code=status.WS_1013_TRY_AGAIN_LATER)
-            return
-        except Exception:
-            _LOGGER.error("Refused connection due to server error", exc_info=True)
-            await websocket.close(code=status.WS_1011_INTERNAL_ERROR)
-            return
-        else:
-            await websocket.accept()
+        await websocket.accept()
     except RuntimeError:
         # Websocket disconnected while we were subscribing
         subscriber.stop()
@@ -143,7 +134,7 @@ async def recorded(
             send=send,
             buffer=buffer,
             writer=writer,
-            formatter=format_event_document,
+            formatter=format_event_row,
             logger=_LOGGER,
             chunk_size=chunk_size
         ),

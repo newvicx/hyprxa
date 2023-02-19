@@ -2,7 +2,6 @@ from fastapi import APIRouter, Depends, Request
 
 from hyprxa.auth.models import BaseUser
 from hyprxa.auth.scopes import requires
-from hyprxa.exceptions import NotConfiguredError
 
 
 

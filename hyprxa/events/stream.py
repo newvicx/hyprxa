@@ -1,26 +1,10 @@
-import json
 from collections.abc import AsyncIterable
 from datetime import datetime
-from typing import List
 
 from motor.motor_asyncio import AsyncIOMotorCollection
 
 from hyprxa.events.models import EventDocument, ValidatedEventDocument
-from hyprxa.types import JSONPrimitive
 
-
-
-def format_event_document(event: EventDocument) -> List[JSONPrimitive]:
-    """Format an event document as an iterablewhich can be converted to a row
-    for a file format.
-    """
-    return [
-        event.timestamp.isoformat(),
-        event.posted_by,
-        event.topic,
-        event.routing_key,
-        json.dumps(event.payload)
-    ]
 
 
 async def get_events(
@@ -65,4 +49,11 @@ async def get_events(
                 index = sorted([(document.timestamp, i) for i, document in enumerate(documents)])
                 for _, i in index:
                     if documents[i].timestamp >= start_time and documents[i].timestamp <= end_time:
-                        yield documents[i]
+                        document = documents[i]
+                        row = (
+                            document.timestamp,
+                            document.topic,
+                            document.routing_key,
+                            document.payload
+                        )
+                        yield row
