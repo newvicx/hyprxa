@@ -1,5 +1,6 @@
 <p align="center">
-![logo.png](https://github.com/newvicx/hyprxa/blob/master/img/logo.png?raw=true)
+	<a <img width="350" height="208" src="https://github.com/newvicx/hyprxa/blob/master/img/logo.png?raw=true)" alt='Hyprxa'>
+</a>
 </p>
 
 Hyprxa (hyper-ex-ay) is an asynchronous data integration framework and event hub built on top of [FastAPI](https://fastapi.tiangolo.com/). 
