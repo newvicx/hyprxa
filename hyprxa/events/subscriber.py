@@ -1,6 +1,7 @@
 from collections.abc import AsyncIterable
 
-from hyprxa.base import BaseSubscriber, SubscriberCodes
+from hyprxa.base.models import SubscriberCodes
+from hyprxa.base.subscriber import BaseSubscriber
 
 
 

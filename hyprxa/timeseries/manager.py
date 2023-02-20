@@ -12,7 +12,6 @@ from pamqp import commands
 
 from hyprxa.base.manager import BaseManager
 from hyprxa.base.exceptions import SubscriptionLimitError
-from hyprxa.base.subscriber import BaseSubscriber
 from hyprxa.timeseries.base import BaseClient
 from hyprxa.timeseries.exceptions import (
     ClientClosed,
@@ -29,6 +28,7 @@ from hyprxa.timeseries.models import (
     TimeseriesManagerInfo
 )
 from hyprxa.timeseries.sources import Source
+from hyprxa.timeseries.subscriber import TimeseriesSubscriber
 from hyprxa.util.asyncutils import add_event_loop_shutdown_callback
 
 
@@ -107,7 +107,6 @@ class TimeseriesManager(BaseManager):
         self._max_failed = max_failed
 
         self._client: BaseClient = None
-        self._subscriber: Type[BaseSubscriber] = None
 
         self._total_published = 0
         self._total_stored = 0
@@ -156,13 +155,13 @@ class TimeseriesManager(BaseManager):
 
     async def start(self) -> None:
         """Start the manager."""
-        self._client, self._subscriber = self._source()
+        self._client = self._source()
         # If the event loop shutsdown, `run` may not be able to close the client
         # so we add it as shutdown callback.
         await add_event_loop_shutdown_callback(self._client.close)
         await super().start()
 
-    async def subscribe(self, subscriptions: Sequence[BaseSourceSubscription]) -> BaseSubscriber:
+    async def subscribe(self, subscriptions: Sequence[BaseSourceSubscription]) -> TimeseriesSubscriber:
         """Subscribe to a sequence of subscriptions on the manager.
         
         Args:
@@ -188,7 +187,7 @@ class TimeseriesManager(BaseManager):
         await self._lock.register(subscriptions)
         await self._subscribe(subscriptions)
 
-        subscriber = self._subscriber()
+        subscriber = TimeseriesSubscriber()
         self.add_subscriber(subscriber=subscriber, subscriptions=subscriptions)
         self.connect_subscriber(subscriber=subscriber, connection=connection)
 
@@ -221,7 +220,7 @@ class TimeseriesManager(BaseManager):
     
     async def bind_subscriber(
         self,
-        subscriber: BaseSubscriber,
+        subscriber: TimeseriesSubscriber,
         channel: Channel,
         declare_ok: commands.Queue.DeclareOk,
     ) -> None:

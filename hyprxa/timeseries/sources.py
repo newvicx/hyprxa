@@ -1,12 +1,11 @@
 from collections.abc import Iterable, MutableMapping, Sequence
 from enum import Enum
-from typing import Any, Dict, List, Tuple, Type
+from typing import Any, Dict, List, Type
 
 from pydantic import BaseModel
 from starlette.requests import HTTPConnection
 
 from hyprxa.auth.scopes import requires
-from hyprxa.base.subscriber import BaseSubscriber
 from hyprxa.timeseries.base import BaseClient
 
 
@@ -17,7 +16,6 @@ class Source:
         self,
         source: str,
         client: Type[BaseClient],
-        subscriber: Type[BaseSubscriber],
         scopes: Sequence[str] | None,
         any_: bool,
         raise_on_no_scopes: bool,
@@ -26,20 +24,17 @@ class Source:
     ) -> None:
         if not issubclass(client, BaseClient):
             raise TypeError("'client' must be a subclass of `BaseClient`.")
-        if not issubclass(subscriber, BaseSubscriber):
-            raise TypeError("'subscriber' must be a subclass of `BaseSubscriber`.")
         self.source = source
         self.client = client
-        self.subscriber = subscriber
         self.scopes = list(scopes) or []
         self.any = any_
         self.raise_on_no_scopes = raise_on_no_scopes
         self.client_args = client_args
         self.client_kwargs = client_kwargs
 
-    def __call__(self) -> Tuple[BaseClient, Type[BaseSubscriber]]:
+    def __call__(self) -> BaseClient:
         """Create a new client instance."""
-        return self.client(*self.client_args, **self.client_kwargs), self.subscriber
+        return self.client(*self.client_args, **self.client_kwargs)
     
     async def is_authorized(self, connection: HTTPConnection) -> None:
         await requires(
@@ -97,7 +92,6 @@ _SOURCES = SourceMapping()
 def add_source(
     source: str,
     client: Type[BaseClient],
-    subscriber: Type[BaseSubscriber],
     scopes: Sequence[str] | None = None,
     any_: bool = False,
     raise_on_no_scopes: bool = False,
@@ -111,7 +105,6 @@ def add_source(
     Args:
         source: The name of the source.
         client: A subclass of `BaseClient`.
-        subscriber: A subclass of `BaseSubscriber`.
         scopes: The required scopes to access the source.
         any_: If `True` and the user has any of the scopes, authorization will
             succeed. Otherwise, the user will need all scopes.
@@ -123,7 +116,6 @@ def add_source(
     s = Source(
         source=source,
         client=client,
-        subscriber=subscriber,
         scopes=scopes,
         any_=any_,
         raise_on_no_scopes=raise_on_no_scopes,
