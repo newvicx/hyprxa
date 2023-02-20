@@ -130,7 +130,7 @@ class MongoLogHandler(logging.Handler):
     """A logging handler that sends logs to MongoDB.
 
     Args:
-        connection_url: Mongo DSN connection url.
+        connection_uri: Mongo DSN connection url.
         database_name: The database to save logs to.
         collection_name: The collection name to save logs to. Defaults to 'logs'.
         flush_interval: The time between flushes on the worker. Defaults to 10
@@ -152,6 +152,7 @@ class MongoLogHandler(logging.Handler):
         expire_after: int = 2_592_000,
         **kwargs: Any
     ) -> None:
+        super().__init__()
         kwargs.update({"expire_after": expire_after})
         self.kwargs = kwargs
         self._flush_level = cast_logging_level(flush_level)
@@ -182,7 +183,7 @@ class MongoLogHandler(logging.Handler):
     def emit(self, record: logging.LogRecord):
         """Send a log to the log worker."""
         try:
-            self.get_worker().publish(self.format(record))
+            self.get_worker().publish(json.loads(self.format(record)))
         except Exception:
             self.handleError(record)
         else:

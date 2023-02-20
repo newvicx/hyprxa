@@ -32,11 +32,16 @@ handlers:
         class: logging.StreamHandler
         formatter: simple
 
-    rotate:
-        class: logging.handlers.TimedRotatingFileHandler
-        filename: hyprxa.log
-        when: midnight
-        backupCount: 14
+    mongo:
+        class: hyprxa.logging.MongoLogHandler
+        connection_uri: mongodb://localhost:27017/
+        database_name: hyprxa
+        collection_name: logs
+        flush_interval: 10
+        flush_level: ERROR
+        buffer_size: 100
+        max_retries: 3
+        expire_after: 2592000
         formatter: standard
         filters: [correlation_id, ip_address, username, host]
 
@@ -55,6 +60,7 @@ loggers:
 
     hyprxa.client:
         level: WARNING
+        handlers: [console]
 
     hyprxa.events:
         level: DEBUG
@@ -79,4 +85,4 @@ loggers:
 # The root logger: any logger without propagation disabled sends to here as well
 root:
     level: WARNING
-    handlers: [rotate]
+    handlers: [mongo]

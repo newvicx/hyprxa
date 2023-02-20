@@ -89,7 +89,7 @@ class MongoWorker:
     def is_stopped(self) -> bool:
         """`True` if worker is stopped."""
         with self._lock:
-            return not self._stopped
+            return self._stopped
 
     @staticmethod
     def default_collection_name() -> str:

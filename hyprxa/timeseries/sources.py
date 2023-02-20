@@ -2,8 +2,8 @@ from collections.abc import Iterable, MutableMapping, Sequence
 from enum import Enum
 from typing import Any, Dict, List, Tuple, Type
 
-from fastapi import Request, WebSocket
 from pydantic import BaseModel
+from starlette.requests import HTTPConnection
 
 from hyprxa.auth.scopes import requires
 from hyprxa.base.subscriber import BaseSubscriber
@@ -41,7 +41,7 @@ class Source:
         """Create a new client instance."""
         return self.client(*self.client_args, **self.client_kwargs), self.subscriber
     
-    async def is_authorized(self, connection: Request | WebSocket) -> None:
+    async def is_authorized(self, connection: HTTPConnection) -> None:
         await requires(
             scopes=self.scopes,
             any_=self.any,

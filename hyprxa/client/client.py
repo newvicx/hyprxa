@@ -23,6 +23,7 @@ from httpx import (
 from pydantic import BaseModel
 
 from hyprxa.auth.models import BaseUser
+from hyprxa.dependencies.info import Info
 from hyprxa.client.base import HyprxaHttpxAsyncClient, HyprxaHttpxClient
 from hyprxa.events.models import Event, EventDocument
 from hyprxa.timeseries.models import SubscriptionMessage
@@ -38,6 +39,27 @@ _LOGGER = logging.getLogger("hyprxa.client")
 
 
 class HyprxaClient:
+    """A synchronous client to the hyprxa API.
+    
+    This client does not support websockets.
+
+    Args:
+        api: The base url to the API.
+        httpx_settings: Any additional settings to pass to the HTTPX client.
+
+    Examples:
+    The preferred use of the client is with a context manager...
+    >>> with HyprxaClient(...) as client:
+    ...     return client.whoami()
+
+    Hyprxa uses bearer authentication. You can authenticate with the API using
+    the `OAuth2ResourceOwnerPasswordCredentials` auth flow from
+    [httpx_auth](https://colin-b.github.io/httpx_auth/)...
+    >>> from httpx_auth import OAuth2ResourceOwnerPasswordCredentials
+    >>> auth = OAuth2ResourceOwnerPasswordCredentials(token_url, username, password)
+    >>> with HyprxaClient(..., auth=auth) as client:
+    ...     return client.whoami()
+    """
     def __init__(
         self,
         api: str,
@@ -84,18 +106,18 @@ class HyprxaClient:
         """Send a GET request to /users/whoami."""
         return self._get("/users/whoami", BaseUser)
 
-    def create_event_topic(self, topic: Topic) -> Status:
-        """Send a POST request to /events/topics/save."""
+    def create_topic(self, topic: Topic) -> Status:
+        """Send a POST request to /topics/save."""
         data = topic.json()
-        return self._post("/events/topics/save", Status, data)
+        return self._post("/topics/save", Status, data)
     
     def get_topic(self, topic: str) -> TopicDocument:
-        """Send a GET request to /events/topics/{topic}."""
-        return self._get(f"/events/topics/{topic}", TopicDocument)
+        """Send a GET request to /topics/search/{topic}."""
+        return self._get(f"/topics/search/{topic}", TopicDocument)
     
     def get_topics(self) -> TopicQueryResult:
-        """Set a GET request to /events/topics."""
-        return self._get("/events/topics", TopicQueryResult)
+        """Send a GET request to /topics/search."""
+        return self._get("/topics/search", TopicQueryResult)
     
     def publish_event(self, event: Event) -> Status:
         """Send a POST request to /events/publish/{event.topic}."""
@@ -145,28 +167,32 @@ class HyprxaClient:
             destination=destination
         )
 
+    def restart_event_manager(self) -> Status:
+        """Send a POST request to /events/admin/manager/restart."""
+        return self._get("/events/admin/manager/restart", Status)
+
     def get_sources(self) -> AvailableSources:
         """Send a GET request to /timeseries/sources."""
         return self._get(f"/timeseries/sources", AvailableSources)
 
     def create_unitop(self, unitop: UnitOp) -> Status:
-        """Send a POST request to /timeseries/unitop/save."""
+        """Send a POST request to /unitops/save."""
         data = unitop.json()
-        return self._post("/timeseries/unitop/save", Status, data)
+        return self._post("/unitops/save", Status, data)
     
     def get_unitop(self, unitop: str) -> UnitOpDocument:
-        """Send a GET request to /timeseries/unitop/{unitop}."""
-        return self._get(f"/timeseries/unitop/{unitop}", UnitOpDocument)
+        """Send a GET request to /unitops/search/{unitop}."""
+        return self._get(f"/unitops/search/{unitop}", UnitOpDocument)
     
     def get_unitops(self, q: str | Dict[str, Any]) -> UnitOpQueryResult:
-        """Set a GET request to /events/topics."""
+        """Set a GET request to /unitops/search."""
         if isinstance(q, dict):
             q = json.dumps(q)
         
         params = QueryParams(q=q)
         return self._get("/timeseries/unitop/search", UnitOpQueryResult, params=params)
     
-    def stream_messages(self, unitop: str) -> Iterable[SubscriptionMessage]:
+    def stream_data(self, unitop: str) -> Iterable[SubscriptionMessage]:
         """Send a GET request to /timeseries/stream/{unitop} and stream data."""
         path = f"/timeseries/stream/{unitop}"
         for data in self._sse("GET", path):
@@ -198,6 +224,19 @@ class HyprxaClient:
             params=params,
             destination=destination
         )
+
+    def restart_timeseries_manager(self, source: str) -> Status:
+        """Send a POST request to /timeseries/admin/manager/restart."""
+        return self._get("/timeseries/admin/manager/restart", Status)
+
+    def get_info(self) -> Info:
+        """Send a GET request to /admin/info."""
+        return self._get("/admin/info", Info)
+
+    def stream_logs(self) -> Iterable[Any]:
+        """Send a GET request to /admin/logs and stream log data."""
+        for log in self._sse("GET", "/admin/logs"):
+            yield log
 
     def _get(
         self,
@@ -339,6 +378,27 @@ class HyprxaClient:
 
 
 class HyprxaAsyncClient:
+    """An asynchronous client to the hyprxa API.
+    
+    This client does not support websockets.
+
+    Args:
+        api: The base url to the API.
+        httpx_settings: Any additional settings to pass to the HTTPX client.
+
+    Examples:
+    The preferred use of the client is with a context manager...
+    >>> async with HyprxaAsyncClient(...) as client:
+    ...     return await client.whoami()
+    
+    Hyprxa uses bearer authentication. You can authenticate with the API using
+    the `OAuth2ResourceOwnerPasswordCredentials` auth flow from
+    [httpx_auth](https://colin-b.github.io/httpx_auth/)...
+    >>> from httpx_auth import OAuth2ResourceOwnerPasswordCredentials
+    >>> auth = OAuth2ResourceOwnerPasswordCredentials(token_url, username, password)
+    >>> async with HyprxaAsyncClient(..., auth=auth) as client:
+    ...     return await client.whoami()
+    """
     def __init__(
         self,
         api: str,
@@ -385,18 +445,18 @@ class HyprxaAsyncClient:
         """Send a GET request to /users/whoami."""
         return await self._get("/users/whoami", BaseUser)
 
-    async def create_event_topic(self, topic: Topic) -> Status:
-        """Send a POST request to /events/topics/save."""
+    async def create_topic(self, topic: Topic) -> Status:
+        """Send a POST request to /topics/save."""
         data = topic.json()
-        return await self._post("/events/topics/save", Status, data)
+        return await self._post("/topics/save", Status, data)
     
     async def get_topic(self, topic: str) -> TopicDocument:
-        """Send a GET request to /events/topics/{topic}."""
-        return await self._get(f"/events/topics/{topic}", TopicDocument)
+        """Send a GET request to /topics/search/{topic}."""
+        return await self._get(f"/topics/search/{topic}", TopicDocument)
     
     async def get_topics(self) -> TopicQueryResult:
-        """Set a GET request to /events/topics."""
-        return await self._get("/events/topics", TopicQueryResult)
+        """Send a GET request to /topics/search."""
+        return await self._get("/topics/search", TopicQueryResult)
     
     async def publish_event(self, event: Event) -> Status:
         """Send a POST request to /events/publish/{event.topic}."""
@@ -412,7 +472,7 @@ class HyprxaAsyncClient:
         self,
         topic: str,
         routing_key: str | None = None
-    ) -> AsyncIterable[EventDocument]:
+    ) -> Iterable[EventDocument]:
         """Send a GET request to /events/stream/{topic} and stream events."""
         params = QueryParams(routing_key=routing_key)
         path = f"/events/stream/{topic}"
@@ -446,28 +506,32 @@ class HyprxaAsyncClient:
             destination=destination
         )
 
+    async def restart_event_manager(self) -> Status:
+        """Send a POST request to /events/admin/manager/restart."""
+        return await self._get("/events/admin/manager/restart", Status)
+
     async def get_sources(self) -> AvailableSources:
         """Send a GET request to /timeseries/sources."""
         return await self._get(f"/timeseries/sources", AvailableSources)
 
     async def create_unitop(self, unitop: UnitOp) -> Status:
-        """Send a POST request to /timeseries/unitop/save."""
+        """Send a POST request to /unitops/save."""
         data = unitop.json()
-        return await self._post("/timeseries/unitop/save", Status, data)
+        return await self._post("/unitops/save", Status, data)
     
     async def get_unitop(self, unitop: str) -> UnitOpDocument:
-        """Send a GET request to /timeseries/unitop/{unitop}."""
-        return await self._get(f"/timeseries/unitop/{unitop}", UnitOpDocument)
+        """Send a GET request to /unitops/search/{unitop}."""
+        return await self._get(f"/unitops/search/{unitop}", UnitOpDocument)
     
     async def get_unitops(self, q: str | Dict[str, Any]) -> UnitOpQueryResult:
-        """Set a GET request to /events/topics."""
+        """Set a GET request to /unitops/search."""
         if isinstance(q, dict):
             q = json.dumps(q)
         
         params = QueryParams(q=q)
         return await self._get("/timeseries/unitop/search", UnitOpQueryResult, params=params)
     
-    async def stream_messages(self, unitop: str) -> AsyncIterable[SubscriptionMessage]:
+    async def stream_data(self, unitop: str) -> Iterable[SubscriptionMessage]:
         """Send a GET request to /timeseries/stream/{unitop} and stream data."""
         path = f"/timeseries/stream/{unitop}"
         async for data in self._sse("GET", path):
@@ -499,6 +563,19 @@ class HyprxaAsyncClient:
             params=params,
             destination=destination
         )
+
+    async def restart_timeseries_manager(self, source: str) -> Status:
+        """Send a POST request to /timeseries/admin/manager/restart."""
+        return await self._get("/timeseries/admin/manager/restart", Status)
+
+    async def get_info(self) -> Info:
+        """Send a GET request to /admin/info."""
+        return await self._get("/admin/info", Info)
+
+    async def stream_logs(self) -> Iterable[Any]:
+        """Send a GET request to /admin/logs and stream log data."""
+        async for log in self._sse("GET", "/admin/logs"):
+            yield log
 
     async def _get(
         self,

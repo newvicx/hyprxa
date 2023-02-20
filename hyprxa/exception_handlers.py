@@ -10,7 +10,7 @@ from pymongo.errors import (
 from starlette.requests import HTTPConnection
 
 from hyprxa.base.exceptions import (
-    BrokerClosed,
+    ManagerClosed,
     SubscriptionLimitError,
     SubscriptionTimeout
 )
@@ -65,15 +65,15 @@ async def handle_DatabaseUnavailable(
     )
 
 
-async def handle_BrokerClosed(
+async def handle_ManagerClosed(
     connection: HTTPConnection,
-    exc: BrokerClosed
+    exc: ManagerClosed
 ) -> JSONResponse:
-    """Exception handler for `BrokerClosed`. Return 500 response."""
+    """Exception handler for `ManagerClosed`. Return 500 response."""
     _LOGGER.error(f"Error in {connection.path_params}", exc_info=exc)
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content={"detail": "Broker is closed, the service must be restarted. Contact an administrator."}
+        content={"detail": "Manager is closed, the service must be restarted. Contact an administrator."}
     )
 
 

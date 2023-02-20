@@ -64,7 +64,7 @@ class StandardFormatter(logging.Formatter):
         self._exclude_fields = frozenset(exclude_fields)
         self._stack_trace_limit = stack_trace_limit
 
-    def format(self, record: logging.LogRecord) -> str:
+    def format(self, record: logging.LogRecord, asdict: bool = False) -> str:
         """Format `LogRecord` as ECS-like formatted JSON str"""
         result = self._prepare(record)
         return json_dumps(result)

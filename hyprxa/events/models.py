@@ -6,7 +6,7 @@ import orjson
 import pydantic
 from pydantic import root_validator
 
-from hyprxa.base.models import BrokerInfo
+from hyprxa.base.models import ManagerInfo
 from hyprxa.util.events import set_routing_key
 from hyprxa.util.models import BaseModel, StorageHandlerInfo
 from hyprxa._context import get_username
@@ -71,7 +71,7 @@ class EventQueryResult(BaseModel):
 ValidatedEventDocument = pydantic.dataclasses.dataclass(EventDocument)
 
 
-class EventManagerInfo(BrokerInfo):
+class EventManagerInfo(ManagerInfo):
     """Model for event manager statistics."""
     publish_buffer_size: int
     storage_buffer_size: int

@@ -28,6 +28,7 @@ class HyprxaHttpxClient(Client):
     """A wrapper for the httpx client with support for retry-after
     headers for:
         - 503 Service unavailable
+    
     Additionally, this client will always call `raise_for_status` on responses.
     """
     RETRY_MAX = 5
@@ -127,6 +128,7 @@ class HyprxaHttpxAsyncClient(AsyncClient):
     """A wrapper for the async httpx client with support for retry-after
     headers for:
         - 503 Service unavailable
+    
     Additionally, this client will always call `raise_for_status` on responses.
     """
     RETRY_MAX = 5

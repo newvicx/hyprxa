@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Sequence, Set
 
 from pydantic import validator
 
-from hyprxa.base.models import BaseSubscription, BrokerInfo
+from hyprxa.base.models import BaseSubscription, ManagerInfo
 from hyprxa.util.models import BaseModel, StorageHandlerInfo
 
 
@@ -148,7 +148,7 @@ class LockInfo(BaseModel):
     uptime: int
 
 
-class TimeseriesManagerInfo(BrokerInfo):
+class TimeseriesManagerInfo(ManagerInfo):
     """Model for timeseries manager statistics."""
     source: str
     client: ClientInfo

@@ -1,5 +1,5 @@
 from .base import BaseAuthenticationBackend
-from .models import BaseUser
+from .models import BaseUser, Token
 from .protocols import AuthenticationClient
 from .route import token
 from .scopes import requires
@@ -12,6 +12,7 @@ __all__ = [
     "BaseAuthenticationBackend",
     "AuthError",
     "BaseUser",
+    "Token",
     "AuthenticationClient",
     "token",
     "requires",
