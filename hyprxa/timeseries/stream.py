@@ -1,4 +1,3 @@
-import asyncio
 from collections.abc import AsyncIterable
 from datetime import datetime
 from typing import Any, Dict, List, Tuple
@@ -133,7 +132,7 @@ async def get_timeseries(
         for timestamp, row in iter_timeseries_rows(index, data):
             yield timestamp, row
     
-    # The query for documents in a range specified `$lt: end_time` so that we
+    # The query for documents in a range specifies `$lt: end_time` so that we
     # do not pull duplicate documents as we iterate through the start and end
     # times (we use $gte: start). So after we have gone through the whole time
     # range we make one last query for the end time so the range is inclusive.
@@ -153,6 +152,6 @@ async def get_timeseries(
         data = [format_timeseries_content(content) for content in contents]
         index = get_timestamp_index(data)
         
-        # This works fine even there are no samples (i.e index is empty list)
+        # This works fine even if there are no samples (i.e index is empty list)
         for timestamp, row in iter_timeseries_rows(index, data):
             yield timestamp, row

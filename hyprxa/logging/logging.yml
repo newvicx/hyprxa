@@ -53,6 +53,9 @@ loggers:
     hyprxa.caching:
         level: DEBUG
 
+    hyprxa.client:
+        level: WARNING
+
     hyprxa.events:
         level: DEBUG
 

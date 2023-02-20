@@ -25,7 +25,36 @@ _LOGGER = logging.getLogger("hyprxa.events.manager")
 class EventManager(BaseManager):
     """Publishes events to RabbitMQ and manages event subscribers.
     
+    The event manager uses RabbitMQ [topic](https://www.rabbitmq.com/tutorials/tutorial-five-python.html)
+    exchanges to enable topic and sub topic routing.
+
+    Events can be published to the manager with the `publish` method. Published
+    events are sent to two places...
+        1. The RabbitMQ exchange
+        2. The event storage backend (MongoDB)
     
+    Events may be published to the manager even if the manager is not connected
+    to RabbitMQ. The events will be buffered and sent to the exchange once the
+    connection is re-established.
+
+    Every event published to the manager is also persisted to MongoDB. The
+    `MongoEventHandler` manages a background thread which writes events to the
+    collection. If the handler is unable to connect to the database, those
+    events will be lost. The manager does not re-buffer events that it cannot
+    write to the database.
+
+    If the connection to RabbitMQ is lost while subscribers are streaming events,
+    the manager will handle reconnecting in the background without disconnecting
+    the subscribers. Once the connection is re-established, the manager will
+    wait 2 seconds and then begin sending buffered events. This should provide
+    enough time for the manager to complete re-binding subscribers to the
+    exchange before any events are sent. If an event is sent but the subscriber
+    has not been bounded to the exchange, the subscriber will not see that event.
+
+    Args:
+        storage: The `MongoEventHandler` for writing events to MongoDB.
+        max_buffered_events: The maximum number of events that can be buffered
+            on the manager before the manager will refuse to enqueue new events.
     """
     def __init__(
         self,
@@ -177,17 +206,9 @@ class EventManager(BaseManager):
                     self.set_connection(connection)
                 
                 try:
-                    # We need to remove the connection as soon as its closed.
-                    # In testing, there was a race condition that occurred where
-                    # the subscriber reconnect process would kick off before
-                    # exiting this context and removing the connection. The
-                    # manager state would still be 'ready' but the connection
-                    # was closed. So the reconnect coroutine would immediately
-                    # assume the connection was ready again and proceed. It would
-                    # then check the connection, find it was closed, and fail.
-                    # It was all dependant on how the loop scheduled the callbacks.
-                    # Removing it as callback to the `closing` future resolves
-                    # the issue.
+                    # Remove the connection from the manager immediately after
+                    # the RabbitMQ connection closes. this ensures the manager
+                    # state is "not ready" when subscribers try and reconnect.
                     connection.closing.add_done_callback(lambda _: self.remove_connection())
                     async with anyio.create_task_group() as tg:
                         tg.start_soon(self._publish_events, connection, self.exchange)
@@ -215,21 +236,12 @@ class EventManager(BaseManager):
         channel = await connection.channel(publisher_confirms=False)
         await channel.exchange_declare(exchange=exchange, exchange_type="topic")
 
-        # When the broker connection drops, the link between the broker and
-        # subscribers is broken. The subscribers will wait for a new connection
-        # and then re-declare all queues and bindings. All queues declared are
-        # temporary for obvious reasons so when we have interruptions, the
-        # subscribers have to race to re-declare their queues before any events
-        # are published otherwise those events will not be routed and will be lost.
-        
-        # If we only had to worry about subscribers in a single process, we could
-        # wait on the declarations before publishing anything. But, when we have
-        # multiple processes spanning potentially multiple hosts, there is no
-        # way to confirm all subscriber links have been re-established. So
-        # instead, all we do is wait a couple of seconds. This should give the
-        # subscriber enough time re-establish their link to the broker before
-        # anything is published. However, if it takes longer than the waiting
-        # period to re-declare the queues and bindings, events will be lost.
+        # After reconnecting to RabbitMQ, we cant reliably confirm all
+        # subscribers have binded to the exchange before publishing buffered
+        # events, especially on multiple hosts. We give the subscribers 2 seconds
+        # after the connection is made then begin publishing. If a subscriber
+        # has not re-declared in that time, the subscriber will not receive
+        # those events.
         await asyncio.sleep(2)
 
         while True:

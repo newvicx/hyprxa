@@ -20,7 +20,7 @@ from hyprxa.util.backoff import EqualJitterBackoff
 
 
 
-_LOGGER = logging.getLogger("hyprxa.base")
+_LOGGER = logging.getLogger("hyprxa.base.manager")
 
 
 class BaseManager:
@@ -235,8 +235,21 @@ class BaseManager:
         fut = self._loop.create_task(coro(*args, **kwargs))
         for callback in callbacks:
             fut.add_done_callback(callback)
+        fut.add_done_callback(self._log_background_result)
         fut.add_done_callback(self._background.discard)
         self._background.add(fut)
+        _LOGGER.debug("Started task %s (%s)", fut.get_name(), coro.__qualname__)
+
+    def _log_background_result(self, fut: asyncio.Task) -> None:
+        """Log the result of a background task on the manager."""
+        _LOGGER.debug("Task %s completed", fut.get_name())
+        try:
+            e = fut.exception()
+        except asyncio.CancelledError:
+            _LOGGER.debug("Task %s was cancelled", fut.get_name())
+        else:
+            if e is not None:
+                _LOGGER.warning("Error in task %s", fut.get_name(), exc_info=e)
 
     def connect_subscriber(
         self,
@@ -336,6 +349,7 @@ class BaseManager:
             await asyncio.wait([channel.closing, subscriber.stopping], return_when=asyncio.FIRST_COMPLETED)
         finally:
             if not channel.closing.done():
+                # Subscriber stopped
                 await channel.basic_cancel(consume_ok.consumer_tag)
                 await channel.close()
 

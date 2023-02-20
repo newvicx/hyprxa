@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends
+from starlette.requests import Request
 
 from hyprxa.auth.models import BaseUser
 from hyprxa.auth.scopes import requires

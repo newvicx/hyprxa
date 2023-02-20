@@ -1,8 +1,8 @@
 from typing import Dict, List
 
 from fastapi import Depends, HTTPException, status
-from fastapi.requests import HTTPConnection
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorCollection
+from starlette.requests import HTTPConnection
 
 from hyprxa.base.subscriber import BaseSubscriber
 from hyprxa.caching.singleton import singleton
@@ -19,7 +19,7 @@ from hyprxa.unitops.models import UnitOpDocument
 
 @singleton
 async def get_timeseries_manager(source: str) -> TimeseriesManager:
-    """Returns a singleton instance of a manager."""
+    """Returns a singleton instance of a timeseries manager."""
     if source not in _SOURCES:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

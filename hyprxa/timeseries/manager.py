@@ -37,16 +37,11 @@ _LOGGER = logging.getLogger("hyprxa.timeseries.manager")
 
 
 class TimeseriesManager(BaseManager):
-    """Manages subscribers and a client connection to a data source.
-    
-    A `TimeseriesManager` receives standard formatted messages from clients
-    and broadcasts them out to subscribers via a routing key. The routing key
-    is a unique combination of the source name and the hash of the subscription.
+    """Manages subscribers and a client connecting to a data source.
 
-    Subscribers subscribe to a sequence of subscriptions and declare a queue on
-    RabbitMQ exchange. The queue is bound to all subscriptions via an analogous
-    routing key (source-hash) that the manager uses when publishing. Messages
-    are routed directly to subscribers from the RabbitMQ server.
+    The timeseries manager uses RabbitMQ [direct](https://www.rabbitmq.com/tutorials/tutorial-four-python.html)
+    exchanges to route `SubscriptionMessages` to subscribers. The routing key
+    is a combination of the subscription source and the hash of the subscription.
 
     The `TimeseriesManager` works cooperatively in a distributed context. It
     maintains a global lock of all client subscriptions through a caching server
@@ -57,42 +52,15 @@ class TimeseriesManager(BaseManager):
     two managers may subscribe to the same subscription when the connection is
     restored. In that case, duplicate messages will be posted to RabbitMQ and
     routed to the subscribers. Therefore, it is the responsibility of the subscriber
-    to ensure it does not forward along duplicate messages. This can be done
-    easily assuming the client adheres to the hyprxa protocol...
-    
-        - Clients must only send messages containing unique timestamped values in
-        monotonically increasing order. `TimestampedValue`(s) must be sorted
-        within a message.
+    to ensure it does not forward along duplicate messages.
 
-    For a client, it is trivial to sort timestamped values (`TimestampValue` is
-    sortable) and guarentee uniqueness of timestamps. From there a client need
-    only store a reference to the last timestamp for that subscription.
-    On the next message it sorts and then filters to meet the uniqueness and
-    monotonically increasing requirements. Some sources may already meet this
-    requirement in which case the client may not need to do anything but it is
-    the responsibility of the client to ensure these requirements are met.
-
-    If a client is compliant, a subscriber need only keep a reference to the
-    last (i.e. most recent) timestamp for each subscription. If it receives
-    a message where the last timestamp is less than or equal to the last timestamp
-    of the previous message it discards the message.
-
-    If the connection to RabbitMQ is lost for any reason, subscribers will
-    not be dropped (at least not initially). The manager will attempt to re-establish
-    the connection while subscribers wait (up to `reconnect_seconds`). While the
-    manager is reconnecting to RabbitMQ, clients continue to operate as usual
-    and will buffer messages on the manager. When the connection is re-established,
-    subscribers will declare new queues and bind to the exchange. The manager
-    will pick up buffered messages and publish them. From the perspective of
-    the client, nothing happened. However, there is no guarentee that messages
-    buffered on the manager while reconnecting will reach the subscriber. This
-    is because there is no way to confirm all subscribers have re-binded to the
-    exchange in every process on every host. The manager will wait 2 seconds
-    before it publishes the first buffered message. If a subscriber has not
-    completed binding to the exchange, that message and all subsequent messages
-    will be lost until the subscriber binds to the exchange. In practice, 2
-    seconds is a long time to re-declare a queue and bind so while it is unlikely
-    that any messages will be lost we cannot guarentee they wont.
+    If the connection to RabbitMQ is lost while subscribers are streaming messages,
+    the manager will handle reconnecting in the background without disconnecting
+    the subscribers. Once the connection is re-established, the manager will
+    wait 2 seconds and then begin sending buffered messages. This should provide
+    enough time for the manager to complete re-binding subscribers to the
+    exchange before any messages are sent. If a message is sent but the subscriber
+    has not been bounded to the exchange, the subscriber will not see that event.
 
     If the RabbitMQ connection is down for an extended period of time, the manager
     will eventually unsubscribe from all subscriptions on the client and drop
@@ -100,17 +68,16 @@ class TimeseriesManager(BaseManager):
     However, the manager will continue to try and reconnect to RabbitMQ in the
     background. Once it reconnects, it can begin accepting new subscribers.
 
-    Another interesting situation arises when the RabbitMQ connection is down
-    for an extended period. The client continues to operate in the background
-    and buffer messages from its connections. The data queue on a client is
-    bounded and can eventually fill up. At that point, connections will block
-    when trying to publish to the client. This ensures that messages do not pile
-    up indefinetely consuming more and more memory. This flow control also kicks
-    in if the manager is unable to connect to MongoDB for storing samples.
+    Every message published to the manager is also persisted to MongoDB. The
+    `MongoTimeseriesHandler` manages a background thread which writes messages to
+    the collection. If the handler is unable to connect to the database, those
+    messages will be lost. The manager does not re-buffer messages that it cannot
+    write to the database.
 
-    When a manager receives a message, it will store all timeseries samples within
-    that message in the timeseries database. For more information on storage
-    worker semantics, see the `MongoTimeseriesHandler`.
+    If a client error occurs and subscriptions are dropped. The manager will
+    drop all subscribers it owns which rely on the dropped subscriptions. Other
+    managers in other processes may attempt to subscribe to the dropped
+    subscriptions before dropping their subscribers.
 
     Args:
         source: The data source to connect to.
@@ -322,17 +289,9 @@ class TimeseriesManager(BaseManager):
                     self.set_connection(connection)
                 
                 try:
-                    # We need to remove the connection as soon as its closed.
-                    # In testing, there was a race condition that occurred where
-                    # the subscriber reconnect process would kick off before
-                    # exiting this context and removing the connection. The
-                    # manager state would still be 'ready' but the connection
-                    # was closed. So the reconnect coroutine would immediately
-                    # assume the connection was ready again and proceed. It would
-                    # then check the connection, find it was closed, and fail.
-                    # It was all dependant on how the loop scheduled the callbacks.
-                    # Removing it as callback to the `closing` future resolves
-                    # the issue.
+                    # Remove the connection from the manager immediately after
+                    # the RabbitMQ connection closes. this ensures the manager
+                    # state is "not ready" when subscribers try and reconnect.
                     connection.closing.add_done_callback(lambda _: self.remove_connection())
                     async with anyio.create_task_group() as tg:
                         tg.start_soon(self._publish_messages, connection, self.exchange)
@@ -365,21 +324,12 @@ class TimeseriesManager(BaseManager):
         channel = await connection.channel(publisher_confirms=False)
         await channel.exchange_declare(exchange=exchange, exchange_type="direct")
 
-        # When the broker connection drops, the link between the broker and
-        # subscribers is broken. The subscribers will wait for a new connection
-        # and then re-declare all queues and bindings. All queues declared are
-        # temporary for obvious reasons so when we have interruptions, the
-        # subscribers have to race to re-declare their queues before any messages
-        # are published otherwise those messages will not be routed and will be lost.
-        
-        # If we only had to worry about subscribers in a single process, we could
-        # wait on the declarations before publishing anything. But, when we have
-        # multiple processes spanning potentially multiple hosts, there is no
-        # way to confirm all subscriber links have been re-established. So
-        # instead, all we do is wait a couple of seconds. This should give the
-        # subscribers enough time re-establish their link to the broker before
-        # anything is published. However, if it takes longer than the waiting
-        # period to re-declare the queues and bindings, events will be lost.
+        # After reconnecting to RabbitMQ, we cant reliably confirm all
+        # subscribers have binded to the exchange before publishing buffered
+        # messages, especially on multiple hosts. We give the subscribers 2 seconds
+        # after the connection is made then begin publishing. If a subscriber
+        # has not re-declared in that time, the subscriber will not receive
+        # those messages.
         await asyncio.sleep(2)
 
         source = self._source.source
@@ -434,24 +384,18 @@ class TimeseriesManager(BaseManager):
                 else:
                     _LOGGER.debug("Releasing %i locks", len(subscriptions))
 
-                # It is okay if this fails due to a transient error. The client
-                # subscriptions have been dropped so their locks will not be
-                # extended by this process anymore and will eventually expire
-                # on the caching server.
-
-                # However, there is small potential for data loss.
-                # There at most a TTL gap between the time `release` fails to
-                # the actual release due to expiration on the server. In that
-                # TTL, another subscriber in a different process can subscribe
-                # to the unreleased subscription. Assuming that process does not
-                # also experience a transient error, the manager will try to
-                # acquire the lock and see it is already held and (incorrectly)
-                # assume the data is being streamed elsewhere. In actuality that
-                # data is not being streamed. Therefore we have a window where
-                # a subscriber expects to receive data it will never get. This
-                # is, at most, 2.5 TTL. When the manager in the other process
-                # polls its subscribers against the caching server, it will see
-                # that client lock is no longer held and attempt to subscribe
+                # If we fail to release the locks, there is at most a TTL gap
+                # between the time `release` fails to the actual release due to
+                # expiration on the server. In that time, another subscriber in
+                # a different process can subscribe to the unreleased subscription.
+                # The manager for that process will try to acquire the locks and
+                # see they are already held and assume the data is being
+                # streamed elsewhere. In actuality that data is not being
+                # streamed. Therefore we have a window where a subscriber
+                # expects to receive data it will never get. This is, at most,
+                # 2.5 TTL. When the manager in the other process polls its
+                # subscribers against the caching server, it will see that the
+                # client locks are no longer held and attempt to subscribe
                 # on its own client.
                 await self._lock.release(subscriptions)
 
@@ -497,27 +441,14 @@ class TimeseriesManager(BaseManager):
             if subscriptions:
                 not_subscribed = await self._lock.subscriber_poll(subscriptions)
                 if not_subscribed:
-                    # This is where we have a chance for duplicate subscriptions
-                    # in multiple processes. For polling operations, if a transient
-                    # error occurs, we assume the subscription is needed and we
-                    # stream the data. If the caching server goes down temporarily,
-                    # all locks will be lost (or expire if there is some persistence).
-                    # When the server becomes available, there is race between
-                    # the process which owns a client subscription to re-acquire
-                    # its lock (by extending) and the process which has a subscriber
-                    # trying to stream data. If the process which does not own the
-                    # client subscription goes first, it will poll the caching
-                    # server and see that no process is streaming the subscription
-                    # it wants. It will acquire a lock and subscribe on its client.
-                    # In the meantime, the process which owned the client subscription
-                    # will just continue to extend its lock not knowing that the
-                    # other process is also streaming the same subscription. This
-                    # is why subscribers must be the final gatekeeper for duplicate
-                    # data. If clients follow the protocol and ensure data is
-                    # sorted by timestamp it is trivial for a subscribers to just
-                    # look at the last timestamp in a message and ensure they only
-                    # forward messages where the timestamp is greater than the
-                    # last timestamp they saw.
+                    # If the Memcached server goes down, the owner of a client
+                    # subscription will continue to stream data (on failure it
+                    # assumes the subscriptions are still needed). When Memcached
+                    # comes back, a manager in a different process may subscribe
+                    # to subscriptions it thinks are missing before the owning
+                    # prcess gets a chance to re-extend the locks for them.
+                    # As a result, we would end up streaming duplicate subscriptions
+                    # in two different processes.
                     try:
                         await self._subscribe(not_subscribed)
                     except SubscriptionError:

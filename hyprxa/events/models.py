@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List, Tuple
 
@@ -53,7 +53,7 @@ class Event(BaseModel):
         return set_routing_key(v)
     
     def publish(self) -> Tuple[str, bytes]:
-        return self.routing_key, orjson.dumps(self.payload)
+        return self.routing_key, orjson.dumps(asdict(self))
 
     def to_document(self) -> EventDocument:
         return EventDocument(

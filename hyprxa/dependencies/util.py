@@ -2,7 +2,8 @@ from datetime import datetime, timedelta
 
 import dateutil.parser
 import pendulum
-from fastapi import HTTPException, Query, Request, status
+from fastapi import HTTPException, Query, status
+from starlette.requests import Request
 
 from hyprxa.util.defaults import DEFAULT_TIMEZONE
 from hyprxa.util.filestream import FileWriter, get_file_format_writer
@@ -22,7 +23,7 @@ def get_file_writer(request: Request) -> FileWriter:
 
 
 def parse_timestamp(query: Query, default_timedelta: int | None = None):
-    """Parse a str timestamp from a request.
+    """Parse a `str` timestamp from a request.
     
     The timestamp is returned in UTC. The input str timezone is assumed to be
     the application timezone unless otherwise specified.

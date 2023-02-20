@@ -102,7 +102,7 @@ class BaseClient:
     Clients interface between a `TimeseriesManager` and a data source. A data
     source could be a REST API, CSV file, or database; it doesn't matter. A client
     abstracts away the mechanism of the data integration from the manager and
-    provides a consistent interface to ferry data. Clients do this through a
+    provides a consistent interface to proxy data. Clients do this through a
     'connection'. A connection is where actual I/O and data processing occur,
     a client manages those connections, adding them when needed for
     subscriptions and tearing them down when no longer needed.

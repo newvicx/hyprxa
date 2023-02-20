@@ -68,7 +68,7 @@ class LogWorker(MongoWorker):
 
                 # Roughly replicate the behavior of the stdlib logger error handling
                 if logging.raiseExceptions and sys.stderr:
-                    sys.stderr.write("--- commandcenter logging error ---\n")
+                    sys.stderr.write("--- hyprxa logging error ---\n")
                     traceback.print_exc(file=sys.stderr)
                     sys.stderr.write(json.dumps(self.info, indent=2))
                     if exiting:

@@ -63,7 +63,7 @@ class SourceMapping(MutableMapping):
         self._sources[source.source] = source
 
     def compile_sources(self) -> Enum:
-        """Generate an Enum of sources. Used for validation in API requests."""
+        """Generate an enum of sources. Used for validation in API requests."""
         return Enum(
             "Sources",
             {k.replace(" ", "_").upper(): k.replace(" ", "_").lower() for k in self._sources.keys()}

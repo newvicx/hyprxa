@@ -26,7 +26,7 @@ async def get_event(
 ) -> EventDocument:
     """Get the most recent event matching both topic and routing key.
     
-    If routing_key is None, returns the most recent event for the topic.
+    If routing_key is `None`, returns the most recent event for the topic.
     """
     query = {"topic": topic}
     if routing_key:
@@ -75,5 +75,5 @@ async def validate_event(
 
 @singleton
 async def get_event_manager() -> EventManager:
-    """Returns a singleton instance of an event bus."""
+    """Returns a singleton instance of an event manager."""
     return await EVENT_BUS_SETTINGS.get_manager()

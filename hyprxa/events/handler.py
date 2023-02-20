@@ -56,6 +56,7 @@ class EventWorker(MongoWorker):
                 continue
             
             try:
+                _LOGGER.debug("Sending batch of events to database", extra=self.info)
                 for _ in range(len(self._pending_documents)):
                     document: EventDocument = self._pending_documents.pop(0)
                     collection.update_one(
@@ -71,6 +72,8 @@ class EventWorker(MongoWorker):
                         },
                         upsert=True
                     )
+                else:
+                    _LOGGER.debug("All events saved")
             except Exception:
                 # Attempt to send on the next call instead
                 done = True

@@ -1,5 +1,6 @@
-from fastapi import Depends, Request
+from fastapi import Depends
 from starlette.middleware.authentication import AuthenticationMiddleware
+from starlette.requests import Request
 
 from hyprxa.auth.base import BaseAuthenticationBackend
 from hyprxa.auth.models import BaseUser, TokenHandler

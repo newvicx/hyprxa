@@ -2,10 +2,11 @@ import logging
 from datetime import datetime
 from typing import List, Tuple
 
-from fastapi import APIRouter, Depends, Query, WebSocket
+from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
 from motor.motor_asyncio import AsyncIOMotorCollection
 from sse_starlette import EventSourceResponse
+from starlette.websockets import WebSocket
 
 from hyprxa.auth import BaseUser
 from hyprxa.base import BaseSubscriber, iter_subscribers

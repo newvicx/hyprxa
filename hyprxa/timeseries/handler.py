@@ -74,14 +74,17 @@ class TimeseriesWorker(MongoWorker):
             
             try:
                 try:
+                    _LOGGER.debug("Sending batch of samples to database", extra=self.info)
                     collection.insert_many(self._pending_documents, ordered=False)
                 except BulkWriteError as e:
                     codes = [detail.get("code") == 11000 for detail in e.details.get("writeErrors", [])]
                     if codes and not all(codes):
                         raise
-                self._pending_documents.clear()
-                self._pending_size = 0
-                self._retries = 0
+                else:
+                    _LOGGER.debug("All samples saved")
+                    self._pending_documents.clear()
+                    self._pending_size = 0
+                    self._retries = 0
             except Exception:
                 # Attempt to send on the next call instead
                 done = True

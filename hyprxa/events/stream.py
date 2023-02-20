@@ -52,6 +52,7 @@ async def get_events(
                         document = documents[i]
                         row = (
                             document.timestamp,
+                            document.posted_by,
                             document.topic,
                             document.routing_key,
                             document.payload
