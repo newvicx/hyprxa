@@ -23,10 +23,27 @@ classifiers = [
     "Programming Language :: Python :: 3.11"
 ]
 dependencies = [
-    "certifi",
-    "httpcore>=0.15.0,<0.17.0",
-    "idna",
-    "sniffio",
+    "fastapi",
+    "python-jose",
+    "python-multipart",
+    "uvicorn[standard]",
+    "orjson",
+    "aiormq",
+    "motor",
+    "pymemcache",
+    "pyyaml",
+    "toml",
+    "flatten-dict",
+    "accept-types",
+    "asgi-correlation-id",
+    "pendulum",
+    "httpx",
+    "httpx-auth",
+    "jsonlines",
+    "jsonschema",
+    "ndjson",
+    "sentry-sdk",
+    "sse-starlette",
 ]
 dynamic = ["readme", "version"]
 
