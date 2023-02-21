@@ -4,12 +4,12 @@ from contextlib import suppress
 from datetime import datetime
 from typing import Any, Dict, Set
 
-from hyprxa.timeseries.exceptions import ClientClosed
+from hyprxa.timeseries.exceptions import IntegrationClosed
 from hyprxa.timeseries.models import (
     BaseSourceSubscription,
-    ClientInfo,
     ConnectionInfo,
     DroppedSubscriptions,
+    IntegrationInfo,
     SubscriptionMessage
 )
 
@@ -19,9 +19,9 @@ class BaseConnection:
     """Base implementation for a connection.
     
     Connections implement the protocol to retrieve data from a source, parse
-    the data, and package it into a `SubscriptionMessage` for the client.
-    Connections are always slaves to a client and should only be created in
-    the context of a client.
+    the data, and package it into a `SubscriptionMessage` for the integration.
+    Connections are always slaves to a integration and should only be created in
+    the context of a integration.
     """
     def __init__(self) -> None:
         self._subscriptions: Set[BaseSourceSubscription] = set()
@@ -48,7 +48,7 @@ class BaseConnection:
     @property
     def online(self) -> bool:
         """Returns `True` if the connection is 'online' and is allowed to pubish
-        data to the client.
+        data to the integration.
         """
         return self._online
 
@@ -62,7 +62,7 @@ class BaseConnection:
         self._online = not self._online
 
     async def publish(self, data: SubscriptionMessage) -> None:
-        """Publish data to the client."""
+        """Publish data to the integration."""
         await self._data_queue.put(data)
         self._total_published += 1
 
@@ -72,7 +72,7 @@ class BaseConnection:
         This method should receive/retrieve, parse, and validate data from the
         source which it is connecting to.
         
-        When the connection status is 'online' data may be published to the client.
+        When the connection status is 'online' data may be published to the integration.
         """
         raise NotImplementedError()
 
@@ -100,14 +100,14 @@ class BaseIntegration:
     """Base implementation for a data source integration.
 
     Integrations interface between a `TimeseriesManager` and a data source. A data
-    source could be a REST API, CSV file, or database; it doesn't matter. A client
+    source could be a REST API, CSV file, or database; it doesn't matter. A integration
     abstracts away the mechanism of the data integration from the manager and
     provides a consistent interface to proxy data. Integrations do this through a
     'connection'. A connection is where actual I/O and data processing occur,
-    a client manages those connections, adding them when needed for
+    a integration manages those connections, adding them when needed for
     subscriptions and tearing them down when no longer needed.
 
-    A hyprxa compliant client/connection implementation must provide certain
+    A hyprxa compliant integration/connection implementation must provide certain
     guarentees...
 
         - Integrations must only send messages containing unique timestamped values in
@@ -116,10 +116,10 @@ class BaseIntegration:
 
     How this is done is entirely up to the implementation. Some data sources
     may already provide this guarentee but it is the responsibility of the
-    client to ensure this is met.
+    integration to ensure this is met.
     
     Args:
-        max_buffered_messages: The max length of the data queue for the client.
+        max_buffered_messages: The max length of the data queue for the integration.
     """
     def __init__(self, max_buffered_messages: int = 1000) -> None:
         self._connections: Dict[asyncio.Task, BaseConnection] = {}
@@ -132,22 +132,22 @@ class BaseIntegration:
 
     @property
     def capacity(self) -> int:
-        """Returns an integer indicating how many more subscriptions this client
+        """Returns an integer indicating how many more subscriptions this integration
         can support.
         """
         raise NotImplementedError()
 
     @property
     def closed(self) -> bool:
-        """Returns `True` if client is closed. A closed client cannot accept
+        """Returns `True` if integration is closed. A closed integration cannot accept
         new subscriptions.
         """
         raise NotImplementedError()
 
     @property
-    def info(self) -> ClientInfo:
-        """Returns current information on the client."""
-        return ClientInfo(
+    def info(self) -> IntegrationInfo:
+        """Returns current information on the integration."""
+        return IntegrationInfo(
             name=self.__class__.__name__,
             closed=self.closed,
             data_queue_size=self._data.qsize(),
@@ -171,7 +171,7 @@ class BaseIntegration:
         return subscriptions
 
     def clear(self) -> None:
-        """Clear all buffered data on the client."""
+        """Clear all buffered data on the integration."""
         for queue in (self._data, self._dropped):
             try:
                 while True:
@@ -181,7 +181,7 @@ class BaseIntegration:
                 pass
 
     async def close(self) -> None:
-        """Close the client instance and shut down all connections.
+        """Close the integration instance and shut down all connections.
         
         `close` must be idempotent.
         """
@@ -194,7 +194,7 @@ class BaseIntegration:
             self._dropped.task_done()
             yield msg
         else:
-            raise ClientClosed()
+            raise IntegrationClosed()
     
     async def get_messages(self) -> AsyncIterable[SubscriptionMessage]:
         """Receive incoming messages from all connections."""
@@ -203,7 +203,7 @@ class BaseIntegration:
             self._data.task_done()
             yield msg
         else:
-            raise ClientClosed()
+            raise IntegrationClosed()
 
     async def subscribe(self, subscriptions: Set[BaseSourceSubscription]) -> bool:
         """Subscribe to a set of subscriptions.
@@ -230,7 +230,7 @@ class BaseIntegration:
         raise NotImplementedError()
 
     def add_connection(self, fut: asyncio.Task, connection: BaseConnection) -> None:
-        """Add a running connection to the client."""
+        """Add a running connection to the integration."""
         self._connections[fut] = connection
         self._connections_serviced += 1
 
@@ -241,7 +241,7 @@ class BaseIntegration:
         e: Exception = None
         with suppress(asyncio.CancelledError):
             e = fut.exception()
-        # If a connection was cancelled by the client and the subscriptions were
+        # If a connection was cancelled by the integration and the subscriptions were
         # replaced through another connection, subscriptions will be empty set.
         # But, `unsubscribe` will lead to non-empty subscriptions.
         msg = DroppedSubscriptions(

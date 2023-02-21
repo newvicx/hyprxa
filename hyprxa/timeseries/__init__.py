@@ -1,7 +1,7 @@
-from .base import BaseClient, BaseConnection
+from .base import BaseConnection, BaseIntegration
 from .exceptions import (
-    ClientClosed,
-    ClientSubscriptionError,
+    IntegrationClosed,
+    IntegrationSubscriptionError,
     TimeseriesManagerClosed,
     SubscriptionLockError,
     TimeseriesError
@@ -30,10 +30,10 @@ from .sources import add_source
 
 
 __all__ = [
-    "BaseClient",
     "BaseConnection",
-    "ClientClosed",
-    "ClientSubscriptionError",
+    "BaseIntegration",
+    "IntegrationClosed",
+    "IntegrationSubscriptionError",
     "TimeseriesManagerClosed",
     "SubscriptionLockError",
     "TimeseriesError",

@@ -54,7 +54,7 @@ class AnySourceSubscriptionRequest(BaseSourceSubscriptionRequest):
 
 
 class DroppedSubscriptions(BaseModel):
-    """Message for dropped subscriptions from a client to a manager."""
+    """Message for dropped subscriptions from an integration to a manager."""
     subscriptions: Set[BaseSourceSubscription | None]
     error: Exception | None
 
@@ -101,7 +101,7 @@ class TimeseriesSamples(Iterable[TimeseriesDocument]):
 
 
 class SubscriptionMessage(BaseModel):
-    """Base model for any message emitted from a client.
+    """Base model for any message emitted from an integration.
     
     Messages must be json encode/decode(able).
     """
@@ -126,8 +126,8 @@ class ConnectionInfo(BaseModel):
     total_subscriptions: int
 
 
-class ClientInfo(BaseModel):
-    """Model for client statistics."""
+class IntegrationInfo(BaseModel):
+    """Model for integration statistics."""
     name: str
     closed: bool
     data_queue_size: int
@@ -151,7 +151,7 @@ class LockInfo(BaseModel):
 class TimeseriesManagerInfo(ManagerInfo):
     """Model for timeseries manager statistics."""
     source: str
-    client: ClientInfo
+    integration: IntegrationInfo
     lock: LockInfo
     storage_buffer_size: int
     storage: StorageHandlerInfo

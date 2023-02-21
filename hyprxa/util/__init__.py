@@ -30,7 +30,7 @@ from .formatting import (
 )
 from .json import json_dumps, json_loads
 from .logging import cast_logging_level
-from .sse import SSE, SSEParser
+from .sse import SSE, SSEParser, sse_handler
 from .status import Status, StatusOptions
 from .subprocess import log_subprocess
 from .time import (
@@ -75,6 +75,7 @@ __all__ = [
     "cast_logging_level",
     "SSE",
     "SSEParser",
+    "sse_handler",
     "Status",
     "StatusOptions",
     "log_subprocess",

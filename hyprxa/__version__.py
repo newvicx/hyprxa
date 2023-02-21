@@ -1,3 +1,3 @@
 __title__ = "hyprxa"
-__description__ = "An async framework for real time data integration and event handling."
+__description__ = "An asynchronous data integration framework and event hub built on FastAPI."
 __version__ = "0.0.1"
