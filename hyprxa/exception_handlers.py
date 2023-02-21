@@ -17,7 +17,7 @@ from hyprxa.base.exceptions import (
 from hyprxa.caching.exceptions import CacheError
 from hyprxa.exceptions import NotConfiguredError
 from hyprxa.timeseries.exceptions import (
-    ClientSubscriptionError,
+    IntegrationSubscriptionError,
     SubscriptionLockError
 )
 from hyprxa.util.mongo import DatabaseUnavailable
@@ -91,11 +91,11 @@ async def handle_retryable_SubscriptionError(
     )
 
 
-async def handle_ClientSubscriptionError(
+async def handle_IntegrationSubscriptionError(
     connection: HTTPConnection,
-    exc: ClientSubscriptionError
+    exc: IntegrationSubscriptionError
 ) -> JSONResponse:
-    """Exception handler for `ClientSubscriptionError`. Return 500 response."""
+    """Exception handler for `IntegrationSubscriptionError`. Return 500 response."""
     _LOGGER.error(f"Error in {connection.path_params}", exc_info=exc)
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

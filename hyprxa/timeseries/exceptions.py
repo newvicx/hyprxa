@@ -13,13 +13,13 @@ class SubscriptionLockError(SubscriptionError):
     """
 
 
-class ClientSubscriptionError(SubscriptionError):
-    """Raised by a manager when a client failed to subscribe to subscriptions."""
+class IntegrationSubscriptionError(SubscriptionError):
+    """Raised by a manager when a integration failed to subscribe to subscriptions."""
 
 
 class TimeseriesManagerClosed(ManagerClosed):
     """Raised when attempting to subscribe to a closed manager."""
 
 
-class ClientClosed(TimeseriesError):
-    """Raised when certain methods are called on a closed client."""
+class IntegrationClosed(TimeseriesError):
+    """Raised when certain methods are called on a closed integration."""

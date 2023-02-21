@@ -4,7 +4,7 @@ import random
 from collections.abc import Sequence
 from contextlib import suppress
 from datetime import datetime
-from typing import Any, Set, Type
+from typing import Any, Set
 
 import anyio
 from aiormq import Channel, Connection
@@ -12,10 +12,10 @@ from pamqp import commands
 
 from hyprxa.base.manager import BaseManager
 from hyprxa.base.exceptions import SubscriptionLimitError
-from hyprxa.timeseries.base import BaseClient
+from hyprxa.timeseries.base import BaseIntegration
 from hyprxa.timeseries.exceptions import (
-    ClientClosed,
-    ClientSubscriptionError,
+    IntegrationClosed,
+    IntegrationSubscriptionError,
     SubscriptionError,
     SubscriptionLockError,
     TimeseriesManagerClosed
@@ -37,16 +37,16 @@ _LOGGER = logging.getLogger("hyprxa.timeseries.manager")
 
 
 class TimeseriesManager(BaseManager):
-    """Manages subscribers and a client connecting to a data source.
+    """Manages subscribers and an integration connecting to a data source.
 
     The timeseries manager uses RabbitMQ [direct](https://www.rabbitmq.com/tutorials/tutorial-four-python.html)
     exchanges to route `SubscriptionMessages` to subscribers. The routing key
     is a combination of the subscription source and the hash of the subscription.
 
     The `TimeseriesManager` works cooperatively in a distributed context. It
-    maintains a global lock of all client subscriptions through a caching server
+    maintains a global lock of all integration subscriptions through a caching server
     (Memcached). This ensures that two managers in two different processes do
-    not subscribe to the same subscription on their clients. This allows hyprxa
+    not subscribe to the same subscription on their integrations. This allows hyprxa
     to scale horizontally without increasing load on the data source. However,
     if there is a transient error in the caching server, there is a chance that
     two managers may subscribe to the same subscription when the connection is
@@ -63,7 +63,7 @@ class TimeseriesManager(BaseManager):
     has not been bounded to the exchange, the subscriber will not see that event.
 
     If the RabbitMQ connection is down for an extended period of time, the manager
-    will eventually unsubscribe from all subscriptions on the client and drop
+    will eventually unsubscribe from all subscriptions on the integration and drop
     any remaining subscribers. This happens after `max_failed` reconnect attempts.
     However, the manager will continue to try and reconnect to RabbitMQ in the
     background. Once it reconnects, it can begin accepting new subscribers.
@@ -74,7 +74,7 @@ class TimeseriesManager(BaseManager):
     messages will be lost. The manager does not re-buffer messages that it cannot
     write to the database.
 
-    If a client error occurs and subscriptions are dropped. The manager will
+    If an integration error occurs and subscriptions are dropped. The manager will
     drop all subscribers it owns which rely on the dropped subscriptions. Other
     managers in other processes may attempt to subscribe to the dropped
     subscriptions before dropping their subscribers.
@@ -85,10 +85,10 @@ class TimeseriesManager(BaseManager):
         storage: The `MongoTimeseriesHandler` for storing timeseries samples.
         max_buffered_message: The maximum number of messages that can be buffered
             on the manager for the storage handler to process. The manager will
-            stop pulling messages from the client until the storage buffer is
+            stop pulling messages from the integration until the storage buffer is
             drained.
         max_failed: The maximum number of reconnect attempts to RabbitMQ before
-            dropping all client subscriptions and subscribers.
+            dropping all integration subscriptions and subscribers.
     """
     def __init__(
         self,
@@ -106,7 +106,7 @@ class TimeseriesManager(BaseManager):
         self._storage_queue: asyncio.Queue[SubscriptionMessage] = asyncio.Queue(maxsize=max_buffered_messages)
         self._max_failed = max_failed
 
-        self._client: BaseClient = None
+        self._integration: BaseIntegration = None
 
         self._total_published = 0
         self._total_stored = 0
@@ -128,7 +128,7 @@ class TimeseriesManager(BaseManager):
             subscriber_capacity=self.max_subscribers-len(self.subscribers),
             total_subscribers_serviced=self.subscribers_serviced,
             subscribers=[subscriber.info for subscriber in self.subscribers.values()],
-            client=self._client.info,
+            integration=self._integration.info,
             lock=self._lock.info,
             total_published=self._total_published,
             total_stored=self._total_stored,
@@ -139,8 +139,8 @@ class TimeseriesManager(BaseManager):
     def close(self) -> None:
         """Close the manager."""
         super().close()
-        if self._client is not None:
-            self._client.clear()
+        if self._integration is not None:
+            self._integration.clear()
         self.clear()
         self._storage.close()
     
@@ -155,10 +155,10 @@ class TimeseriesManager(BaseManager):
 
     async def start(self) -> None:
         """Start the manager."""
-        self._client = self._source()
-        # If the event loop shutsdown, `run` may not be able to close the client
+        self._integration = self._source()
+        # If the event loop shutsdown, `run` may not be able to close the integration
         # so we add it as shutdown callback.
-        await add_event_loop_shutdown_callback(self._client.close)
+        await add_event_loop_shutdown_callback(self._integration.close)
         await super().start()
 
     async def subscribe(self, subscriptions: Sequence[BaseSourceSubscription]) -> TimeseriesSubscriber:
@@ -194,7 +194,7 @@ class TimeseriesManager(BaseManager):
         return subscriber
 
     async def _subscribe(self, subscriptions: Set[BaseSourceSubscription]) -> None:
-        """Acquire locks for subscriptions and subscribe on the client."""
+        """Acquire locks for subscriptions and subscribe on the integration."""
         try:
             to_subscribe = await self._lock.acquire(subscriptions)
         except Exception as e:
@@ -204,19 +204,19 @@ class TimeseriesManager(BaseManager):
 
         if to_subscribe:
             try:
-                subscribed = await self._client.subscribe(to_subscribe)
-            except ClientClosed as e:
+                subscribed = await self._integration.subscribe(to_subscribe)
+            except IntegrationClosed as e:
                 await self._lock.release(to_subscribe)
                 await self.close()
                 raise TimeseriesManagerClosed() from e
             except Exception as e:
-                _LOGGER.warning("Error subscribing on client", exc_info=True)
+                _LOGGER.warning("Error subscribing on integration", exc_info=True)
                 await self._lock.release(to_subscribe)
-                raise ClientSubscriptionError("An error occurred while subscribing.") from e
+                raise IntegrationSubscriptionError("An error occurred while subscribing.") from e
 
             if not subscribed:
                 await self._lock.release(to_subscribe)
-                raise ClientSubscriptionError("Client refused subscriptions.")
+                raise IntegrationSubscriptionError("Integration refused subscriptions.")
     
     async def bind_subscriber(
         self,
@@ -247,7 +247,7 @@ class TimeseriesManager(BaseManager):
             _LOGGER.error("Manager failed", exc_info=True)
             raise
         finally:
-            await self._client.close()
+            await self._integration.close()
 
     async def manage_connection(self) -> None:
         """Manages RabbitMQ connection for manager."""
@@ -267,14 +267,14 @@ class TimeseriesManager(BaseManager):
                     
                     if self.backoff.failures >= self._max_failed:
                         _LOGGER.error(
-                            "Dropping %i client subscriptions due to repeated "
+                            "Dropping %i integration subscriptions due to repeated "
                             "connection failures",
-                            len(self._client.subscriptions)
+                            len(self._integration.subscriptions)
                         )
-                        callbacks = [lambda _: self._client.clear]
+                        callbacks = [lambda _: self._integration.clear]
                         self.add_background_task(
-                            self._client.unsubscribe,
-                            self._client.subscriptions,
+                            self._integration.unsubscribe,
+                            self._integration.subscriptions,
                             callbacks=callbacks
                         )
                         # Drop any remaining subscribers if the reconnect timeout
@@ -295,10 +295,10 @@ class TimeseriesManager(BaseManager):
                     async with anyio.create_task_group() as tg:
                         tg.start_soon(self._publish_messages, connection, self.exchange)
                         await asyncio.shield(connection.closing)
-                except ClientClosed:
+                except IntegrationClosed:
                     with suppress(Exception):
                         await connection.close(timeout=2)
-                    _LOGGER.info("Exited manager because client is closed")
+                    _LOGGER.info("Exited manager because integration is closed")
                     raise
                 except (Exception, anyio.ExceptionGroup):
                     with suppress(Exception):
@@ -319,7 +319,7 @@ class TimeseriesManager(BaseManager):
                     await connection.close(timeout=2)
 
     async def _publish_messages(self, connection: Connection, exchange: str) -> None:
-        """Retrieve messages from the client and publish them to the exchange."""
+        """Retrieve messages from the integration and publish them to the exchange."""
         channel = await connection.channel(publisher_confirms=False)
         await channel.exchange_declare(exchange=exchange, exchange_type="direct")
 
@@ -332,7 +332,7 @@ class TimeseriesManager(BaseManager):
         await asyncio.sleep(2)
 
         source = self._source.source
-        async for msg in self._client.get_messages():
+        async for msg in self._integration.get_messages():
             await self._storage_queue.put(msg)
             routing_key = f"{source}-{hash(msg.subscription)}"
             await channel.basic_publish(
@@ -359,24 +359,24 @@ class TimeseriesManager(BaseManager):
                 _LOGGER.error("Failed to store message. Message will be discarded")
 
     async def _manage_subscriptions(self) -> None:
-        """Background task that manages subscription locking along with client
+        """Background task that manages subscription locking along with integration
         and subscriber subscriptions.
         """
         async with anyio.create_task_group() as tg:
             tg.start_soon(self._get_dropped_subscriptions)
-            tg.start_soon(self._extend_client_subscriptions)
+            tg.start_soon(self._extend_integration_subscriptions)
             tg.start_soon(self._extend_subscriber_subscriptions)
-            tg.start_soon(self._poll_client_subscriptions)
+            tg.start_soon(self._poll_integration_subscriptions)
             tg.start_soon(self._poll_subscriber_subscriptions)
 
     async def _get_dropped_subscriptions(self) -> None:
-        """Retrieve dropped subscriptions and release client locks."""
-        async for msg in self._client.get_dropped():
+        """Retrieve dropped subscriptions and release integration locks."""
+        async for msg in self._integration.get_dropped():
             subscriptions = msg.subscriptions
             if subscriptions:
                 if msg.error:
                     _LOGGER.warning(
-                        "Releasing %i locks due to client connection error",
+                        "Releasing %i locks due to integration connection error",
                         len(subscriptions),
                         exc_info=msg.error
                     )
@@ -394,18 +394,18 @@ class TimeseriesManager(BaseManager):
                 # expects to receive data it will never get. This is, at most,
                 # 2.5 TTL. When the manager in the other process polls its
                 # subscribers against the caching server, it will see that the
-                # client locks are no longer held and attempt to subscribe
-                # on its own client.
+                # integration locks are no longer held and attempt to subscribe
+                # on its own integration.
                 await self._lock.release(subscriptions)
 
-    async def _extend_client_subscriptions(self) -> None:
-        """Extend client locks owned by this process."""
+    async def _extend_integration_subscriptions(self) -> None:
+        """Extend integration locks owned by this process."""
         while True:
             sleep = (self._lock.ttl*1000//2 - random.randint(0, self._lock.ttl*1000//4))/1000
             await asyncio.sleep(sleep)
-            subscriptions = self._client.subscriptions
+            subscriptions = self._integration.subscriptions
             if subscriptions:
-                await self._lock.extend_client(subscriptions)
+                await self._lock.extend_integration(subscriptions)
 
     async def _extend_subscriber_subscriptions(self) -> None:
         """Extend subscriber registrations owned by this process."""
@@ -416,18 +416,18 @@ class TimeseriesManager(BaseManager):
             if subscriptions:
                 await self._lock.extend_subscriber(subscriptions)
 
-    async def _poll_client_subscriptions(self) -> None:
-        """Poll client subscriptions owned by this process."""
+    async def _poll_integration_subscriptions(self) -> None:
+        """Poll integration subscriptions owned by this process."""
         while True:
             sleep = (self._lock.ttl + random.randint(0, self._lock.ttl*1000//2))/1000
             await asyncio.sleep(sleep)
-            subscriptions = self._client.subscriptions
+            subscriptions = self._integration.subscriptions
             if subscriptions:
-                unsubscribe = await self._lock.client_poll(subscriptions)
+                unsubscribe = await self._lock.integration_poll(subscriptions)
                 if unsubscribe:
                     _LOGGER.info("Unsubscribing from %i subscriptions", len(unsubscribe))
                     self.add_background_task(
-                        self._client.unsubscribe,
+                        self._integration.unsubscribe,
                         unsubscribe
                     )
     
@@ -440,7 +440,7 @@ class TimeseriesManager(BaseManager):
             if subscriptions:
                 not_subscribed = await self._lock.subscriber_poll(subscriptions)
                 if not_subscribed:
-                    # If the Memcached server goes down, the owner of a client
+                    # If the Memcached server goes down, the owner of a integration
                     # subscription will continue to stream data (on failure it
                     # assumes the subscriptions are still needed). When Memcached
                     # comes back, a manager in a different process may subscribe

@@ -96,13 +96,13 @@ class BaseConnection:
         raise NotImplementedError()
 
 
-class BaseClient:
-    """Base implementation for a client.
+class BaseIntegration:
+    """Base implementation for a data source integration.
 
-    Clients interface between a `TimeseriesManager` and a data source. A data
+    Integrations interface between a `TimeseriesManager` and a data source. A data
     source could be a REST API, CSV file, or database; it doesn't matter. A client
     abstracts away the mechanism of the data integration from the manager and
-    provides a consistent interface to proxy data. Clients do this through a
+    provides a consistent interface to proxy data. Integrations do this through a
     'connection'. A connection is where actual I/O and data processing occur,
     a client manages those connections, adding them when needed for
     subscriptions and tearing them down when no longer needed.
@@ -110,7 +110,7 @@ class BaseClient:
     A hyprxa compliant client/connection implementation must provide certain
     guarentees...
 
-        - Clients must only send messages containing unique timestamped values in
+        - Integrations must only send messages containing unique timestamped values in
         monotonically increasing order
         - `TimestampedValue`(s) must be sorted within a message.
 

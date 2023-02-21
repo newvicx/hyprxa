@@ -50,7 +50,7 @@ def memcached_release(
 
 
 class SubscriptionLock:
-    """Distributed lock for client subscriptions backed by Memcached.
+    """Distributed lock for integration subscriptions backed by Memcached.
     
     Args:
         memcached: The memcached client.
@@ -89,7 +89,7 @@ class SubscriptionLock:
         self,
         subscriptions: Set[BaseSourceSubscription]
     ) -> Set[BaseSourceSubscription]:
-        """Acquire a lock for a subscription tied to a client.
+        """Acquire a lock for a subscription tied to an integration.
         
         Args:
             subscriptions: A sequence of subscriptions to try and lock to this
@@ -181,11 +181,11 @@ class SubscriptionLock:
             limiter=self._limiter
         )
 
-    async def extend_client(
+    async def extend_integration(
         self,
         subscriptions: Set[BaseSourceSubscription]
     ) -> None:
-        """Extend the locks on client subscriptions owned by this process.
+        """Extend the locks on integration subscriptions owned by this process.
 
         Args:
             subscriptions: A sequence of subscriptions to extend an owned lock for.
@@ -222,11 +222,11 @@ class SubscriptionLock:
         """
         await self.register(subscriptions)
     
-    async def client_poll(
+    async def integration_poll(
         self,
         subscriptions: Set[BaseSourceSubscription]
     ) -> Set[BaseSourceSubscription]:
-        """Poll subscriptions tied to the manager's client.
+        """Poll subscriptions tied to the manager's integration.
         
         This method returns subscriptions which can be unsubscribed from.
         

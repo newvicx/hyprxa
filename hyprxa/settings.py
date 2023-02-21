@@ -616,7 +616,7 @@ class TimeseriesManagerSettings(BaseSettings):
         default=_TM["max_buffered_messages"].default,
         description=format_docstring("""The maximum number of messages that can
         be buffered on the managers storage queue. If the limit is reached, the
-        manager will stop processing messages from the client until the buffer
+        manager will stop processing messages from the integration until the buffer
         drains. Defaults to `{}""".format(_TM["max_buffered_messages"].default))
     )
     subscription_timeout: confloat(gt=0) = Field(
@@ -646,7 +646,7 @@ class TimeseriesManagerSettings(BaseSettings):
     max_failed: conint(gt=0) = Field(
         default=_TM["max_failed"].default,
         description=format_docstring("""The maximum number of failed connection
-        attempts to RabbitMQ before the manager unsubscribes from all client
+        attempts to RabbitMQ before the manager unsubscribes from all integration
         subscriptions. Defaults to `{}`""".format(_TM["max_failed"].default))
     )
 
