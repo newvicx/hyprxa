@@ -72,6 +72,7 @@ __all__ = [
     "snake_to_lower_camel",
     "json_dumps",
     "json_loads",
+    "cast_logging_level",
     "SSE",
     "SSEParser",
     "Status",

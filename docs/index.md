@@ -4,7 +4,9 @@
 
 <p align="center"><strong>Hyprxa</strong> <em> (hyper-ex-ay)</em></p>
 
-Hyprxa is an asynchronous data integration framework and event hub built on [FastAPI](https://fastapi.tiangolo.com/).
+<p align="center"><em>An asynchronous data integration framework and event hub built on
+    </em><a href="https://fastapi.tiangolo.com/"> FastAPI</a>
+</p>
 
 ## Installation
 

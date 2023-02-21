@@ -1,0 +1,62 @@
+[build-system]
+requires = ["hatchling", "hatch-fancy-pypi-readme"]
+build-backend = "hatchling.build"
+
+[project]
+name = "hyprxa"
+description = "An asynchronous data integration framework and event hub built on FastAPI."
+license = "MIT"
+requires-python = ">=3.10"
+authors = [
+    { name = "Chris Newville", email = "chrisnewville1396@gmail.com" },
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Web Environment",
+    "Framework :: AsyncIO",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11"
+]
+dependencies = [
+    "certifi",
+    "httpcore>=0.15.0,<0.17.0",
+    "idna",
+    "sniffio",
+]
+dynamic = ["readme", "version"]
+
+[project.urls]
+Changelog = "https://github.com/newvicx/hyprxa/blob/master/CHANGELOG.md"
+Homepage = "https://github.com/newvicx/hyprxa"
+Source = "https://github.com/newvicx/hyprxa"
+
+[tool.hatch.version]
+path = "hyprxa/__version__.py"
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/hyprxa",
+    "/CHANGELOG.md",
+    "/README.md",
+]
+
+[tool.hatch.metadata.hooks.fancy-pypi-readme]
+content-type = "text/markdown"
+
+[[tool.hatch.metadata.hooks.fancy-pypi-readme.fragments]]
+path = "README.md"
+
+[[tool.hatch.metadata.hooks.fancy-pypi-readme.fragments]]
+text = "\n## Release Information\n\n"
+
+[[tool.hatch.metadata.hooks.fancy-pypi-readme.fragments]]
+path = "CHANGELOG.md"
+pattern = "\n(###.+?\n)## "
+
+[[tool.hatch.metadata.hooks.fancy-pypi-readme.fragments]]
+text = "\n---\n\n[Full changelog](https://github.com/newvicx/hyprxa/blob/master/CHANGELOG.md)\n"
