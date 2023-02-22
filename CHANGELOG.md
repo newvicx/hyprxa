@@ -34,3 +34,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
     - `TimeseriesManager.info` not building correct info object
     - empty `ref` in `TimeseriesSubscriber` leading to `AssertionError`
 - added `add_admin_scopes` to `Hyprxa`
+
+## 0.0.5 (22nd Feb, 2023)
+
+- Minor bug fixes
