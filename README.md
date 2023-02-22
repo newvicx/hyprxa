@@ -38,7 +38,7 @@ Open your browser to http://localhost:8000/docs and your screen should look like
 
 ![full-demo-docs-view](https://github.com/newvicx/hyprxa/blob/master/docs/img/full-demo-docs-view.JPG?raw=true)
 
-And with that you're up and running. You can test out some endpoints in the *Events* and *Topics* section which make up the event hub service. The *Timeseries* and *Unitops* sections wont be useful for the moment because we haven't added any data source integrations yet.
+And with that you're up and running. You can test out some endpoints in the *Events* and *Topics* section which make up the event hub service. The *Timeseries* and *Unitops* sections wont be useful for the moment because you didn't add any data source integrations yet.
 
 ## Event Hub
 
