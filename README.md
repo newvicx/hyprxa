@@ -32,7 +32,7 @@ app = Hyprxa(debug=True)
 
 And thats it! Save, *main.py* to a folder and fire up a command prompt. Activate your virtual environment (yes you should absolutely be using a virtual environment), navigate to the directory  where you saved *main.py* and run
 
-`uvicorn test:app`
+`uvicorn main:app`
 
 Open your browser to http://localhost:8000/docs and your screen should look like this...
 
