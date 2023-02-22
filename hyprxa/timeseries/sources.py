@@ -33,8 +33,8 @@ class Source:
     def __call__(self) -> BaseIntegration:
         """Create a new integration instance."""
         integration = self.integration(*self.client_args, **self.client_kwargs)
-        if not issubclass(integration, BaseIntegration):
-            raise TypeError("'integration' must be a subclass of `Baseintegration`.")
+        if not isinstance(integration, BaseIntegration):
+            raise TypeError("'integration' must be an instance of `Baseintegration`.")
         return integration
     
     async def is_authorized(self, connection: HTTPConnection) -> None:

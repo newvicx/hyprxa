@@ -335,6 +335,7 @@ class HyprxaClient:
                         with open(destination, mode='w') as fh:
                             transfer_temp_to_file(tfh, fh)
                     else:
+                        fh = destination
                         transfer_temp_to_file(tfh, fh)
 
     def __enter__(self):
