@@ -70,7 +70,7 @@ async def chunked_transfer(
     formatter: Callable[[Any], Any] | None,
     logger: logging.Logger,
     chunk_size: int = 1000
-) -> AsyncIterable[str]:
+) -> AsyncIterable[bytes | str]:
     """Stream rows of data in chunks.
     
     Each row is appended to the buffer up to `chunk_size` at which point a
