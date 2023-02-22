@@ -67,7 +67,7 @@ async def chunked_transfer(
     send: AsyncIterable[Any],
     buffer: io.BytesIO | io.StringIO,
     writer: Callable[[Any], None],
-    formatter: Callable[[Any], Any],
+    formatter: Callable[[Any], Any] | None,
     logger: logging.Logger,
     chunk_size: int = 1000
 ) -> AsyncIterable[str]:
@@ -91,6 +91,12 @@ async def chunked_transfer(
         Exception: Any exception raised by the iterator, writer, or formatter.
     """
     count = 0
+
+    if formatter is None:
+        write = lambda data: writer(data)
+    else:
+        write = lambda data: writer(formatter(data))
+    
     try:
         async for data in send:
             if data is None:
@@ -103,7 +109,7 @@ async def chunked_transfer(
                 continue
             
             try:
-                writer(formatter(data))
+                write(data)
             except Exception:
                 logger.error("Unhandled error in writer", exc_info=True)
                 raise
