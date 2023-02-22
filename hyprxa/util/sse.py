@@ -15,7 +15,13 @@ async def sse_handler(send: AsyncIterable[Any], logger: logging.Logger) -> Async
 
 class SSE:
     """Representation of an event from the event stream."""
-    def __init__(self, id=None, event='message', data='', retry=None):
+    def __init__(
+        self,
+        id: int | None = None,
+        event: str = 'message',
+        data: str = '',
+        retry: int | None = None
+    ):
         self.id = id
         self.event = event
         self.data = data
