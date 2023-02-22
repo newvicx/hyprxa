@@ -73,7 +73,6 @@ text = "\n## Release Information\n\n"
 
 [[tool.hatch.metadata.hooks.fancy-pypi-readme.fragments]]
 path = "CHANGELOG.md"
-pattern = "\n(###.+?\n)## "
 
 [[tool.hatch.metadata.hooks.fancy-pypi-readme.fragments]]
 text = "\n---\n\n[Full changelog](https://github.com/newvicx/hyprxa/blob/master/CHANGELOG.md)\n"
