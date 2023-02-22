@@ -16,3 +16,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `add_source` now accepts a callable that returns a `BaseIntegration`
 - Unfied all exceptions and exception handlers under the `exceptions` module
 - Minor bug fixes
+
+## 0.0.3 (22nd Feb, 2023)
+
+- Minor formatting changes
+- `chunked_transfer` accepts `Type[None]` formatter. If `None` data will be written directly to `writer`
