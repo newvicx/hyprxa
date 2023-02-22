@@ -23,7 +23,7 @@ class EventDocument:
     posted_by: str | None = field(default_factory=get_user_identity)
 
     def publish(self) -> Tuple[str, bytes]:
-        return self.routing_key, orjson.dumps(self.payload)
+        return self.routing_key, orjson.dumps(asdict(self))
 
     def __gt__(self, __o: object) -> bool:
         if not isinstance(__o, EventDocument):
@@ -51,9 +51,6 @@ class Event(BaseModel):
     @root_validator
     def _set_routing_key(cls, v: Dict[str, str | None]) -> Dict[str, str]:
         return set_routing_key(v)
-    
-    def publish(self) -> Tuple[str, bytes]:
-        return self.routing_key, orjson.dumps(asdict(self))
 
     def to_document(self) -> EventDocument:
         return EventDocument(
