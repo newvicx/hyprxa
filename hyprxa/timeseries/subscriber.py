@@ -19,7 +19,9 @@ class TimeseriesSubscriber(BaseSubscriber):
     async def __aiter__(self) -> AsyncIterable[str]:
         if self.stopped:
             return
-        ref: Dict[BaseSourceSubscription, datetime] = {}
+        ref: Dict[BaseSourceSubscription, datetime] = {
+            subscription: None for subscription in self._subscriptions
+        }
         while not self.stopped:
             if not self._data:
                 code = await self.wait()

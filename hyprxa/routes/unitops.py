@@ -43,11 +43,12 @@ async def save(
     user: BaseUser = Depends(can_write)
 ) -> Status:
     """Save a topic to the database."""
+    data_mapping = unitop.dict()["data_mapping"]
     result = await collection.update_one(
         filter={"name": unitop.name},
         update={
             "$set": {
-                "data_mapping": unitop.data_mapping,
+                "data_mapping": data_mapping,
                 "meta": unitop.meta,
                 "modified_by": user.identity,
                 "modified_at": datetime.utcnow()

@@ -71,6 +71,10 @@ class EventManager(BaseManager):
         self._total_stored = 0
 
     @property
+    def exchange_type(self) -> str:
+        return "topic"
+
+    @property
     def info(self) -> EventManagerInfo:
         return EventManagerInfo(
             name=self.__class__.__name__,
@@ -234,7 +238,7 @@ class EventManager(BaseManager):
     async def _publish_events(self, connection: Connection, exchange: str) -> None:
         """Publish enqueued events to the manager."""
         channel = await connection.channel(publisher_confirms=True)
-        await channel.exchange_declare(exchange=exchange, exchange_type="topic")
+        await channel.exchange_declare(exchange=exchange, exchange_type=self.exchange_type)
 
         # After reconnecting to RabbitMQ, we cant reliably confirm all
         # subscribers have binded to the exchange before publishing buffered

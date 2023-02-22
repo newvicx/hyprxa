@@ -33,7 +33,7 @@ from .unitops import (
     get_unitop_collection,
     get_unitops
 )
-from .util import get_file_format_writer, parse_timestamp
+from .util import get_file_writer, parse_timestamp
 
 
 
@@ -60,6 +60,6 @@ __all__ = [
     "get_unitop",
     "get_unitop_collection",
     "get_unitops",
-    "get_file_format_writer",
+    "get_file_writer",
     "parse_timestamp",
 ]

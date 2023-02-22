@@ -3,7 +3,7 @@ from .debug import DebugAuthenticationMiddleware, enable_interactive_auth
 from .exceptions import AuthError, UserNotFound
 from .models import BaseUser, Token, TokenHandler
 from .protocols import AuthenticationClient
-from .route import token
+from .route import debug_token, token
 from .scopes import requires
 
 
@@ -19,6 +19,7 @@ __all__ = [
     "Token",
     "TokenHandler",
     "AuthenticationClient",
+    "debug_token",
     "token",
     "requires",
 ]

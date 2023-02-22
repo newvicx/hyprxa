@@ -30,7 +30,7 @@ from hyprxa.auth.base import BaseAuthenticationBackend, on_error
 from hyprxa.auth.debug import DebugAuthenticationMiddleware, enable_interactive_auth
 from hyprxa.auth.models import BaseUser, Token
 from hyprxa.auth.protocols import AuthenticationClient
-from hyprxa.auth.route import token
+from hyprxa.auth.route import debug_token, token
 from hyprxa.exceptions import (
     CacheError,
     DatabaseUnavailable,
@@ -90,6 +90,7 @@ class Hyprxa(FastAPI):
         *,
         debug: bool = False,
         interactive_auth: bool = False,
+        token_path: str = "/token",
         auth_client: Optional[Callable[[], AuthenticationClient]] = None,
         auth_backend: Optional[Type[BaseAuthenticationBackend]] = None,
         routes: Optional[List[BaseRoute]] = None,
@@ -140,7 +141,7 @@ class Hyprxa(FastAPI):
 
         dependencies = dependencies or []
         if interactive_auth:
-            dependencies.append(Depends(enable_interactive_auth))
+            dependencies.append(Depends(enable_interactive_auth(token_path)))
         
         super().__init__(
             debug=debug,
@@ -195,7 +196,16 @@ class Hyprxa(FastAPI):
         self.add_exception_handler(SubscriptionLockError, handle_retryable_SubscriptionError)
         self.add_exception_handler(SubscriptionTimeout, handle_retryable_SubscriptionError)
 
-        self.add_api_route("/token", token, response_model=Token, tags=["Token"])
+        if self.debug:
+            self.add_api_route(token_path, debug_token, response_model=Token, tags=["Token"], methods=["POST"])
+        else:
+            self.add_api_route(token_path, token, response_model=Token, tags=["Token"], methods=["POST"])
+
+        self._authentication_middleware: Middleware = None
+
+    @property
+    def authentication_middleware(self) -> Middleware | None:
+        return self._authentication_middleware
 
     def add_source(
         self,
@@ -248,6 +258,12 @@ class Hyprxa(FastAPI):
                 client=client
             )
 
+        authentication_middleware = Middleware(
+            authentication,
+            backend=backend,
+            on_error=on_error
+        )
+
         middleware = (
             [Middleware(ServerErrorMiddleware, handler=error_handler, debug=debug)]
             + [
@@ -258,11 +274,7 @@ class Hyprxa(FastAPI):
                     allow_methods=["*"],
                     allow_headers=["*"]
                 ),
-                Middleware(
-                    authentication,
-                    backend=backend,
-                    on_error=on_error
-                ),
+                authentication_middleware,
                 Middleware(CorrelationIDMiddleware),
                 Middleware(IPAddressMiddleware),
                 Middleware(UserMiddleware)
@@ -276,7 +288,15 @@ class Hyprxa(FastAPI):
             ]
         )
 
+        self._authentication_middleware = authentication_middleware
+
         app = self.router
         for cls, options in reversed(middleware):
             app = cls(app=app, **options)
         return app
+
+    def add_admin_scopes(scopes: Sequence[str] | None) -> None:
+        """Add scopes to the ADMIN user profile."""
+        if scopes:
+            for scope in scopes:
+                _ADMIN_USER.scopes.add(scope)

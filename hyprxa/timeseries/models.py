@@ -105,7 +105,7 @@ class SubscriptionMessage(BaseModel):
     
     Messages must be json encode/decode(able).
     """
-    subscription: BaseSourceSubscription
+    subscription: AnySourceSubscription
     items: List[TimestampedValue]
 
     def to_samples(self, source: str) -> TimeseriesSamples:

@@ -21,3 +21,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - Minor formatting changes
 - `chunked_transfer` accepts `Type[None]` formatter. If `None` data will be written directly to `writer`
+
+## 0.0.4 (22nd Feb, 2023)
+
+- Bug fixes
+    - token endpoint errored out when in debug mode
+    - `SubscriptionMessage` needs to use `AnySourceSubscription` instead of `BaseSourceSubscription`
+    - exchage type mismatch for `TimeseriesManager` and `EventManager`
+    - /unitops/save errors out on update/insert because `AnySourceSubscription` is not `dict`
+    - auth dependencies not able to acquire authentication middleware from app
+    - client incorrectly encoding json data
+    - `TimeseriesManager.info` not building correct info object
+    - empty `ref` in `TimeseriesSubscriber` leading to `AssertionError`
+- added `add_admin_scopes` to `Hyprxa`

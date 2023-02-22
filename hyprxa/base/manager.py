@@ -99,6 +99,11 @@ class BaseManager:
         return self._exchange
 
     @property
+    def exchange_type(self) -> str:
+        """Returns the exchange type used by the manager."""
+        raise NotImplementedError()
+
+    @property
     def max_subscribers(self) -> int:
         """Returns the maximum number of subscribers this manager can support."""
         return self._max_subscribers
@@ -330,7 +335,7 @@ class BaseManager:
         
         channel = await connection.channel(publisher_confirms=False)
         try:
-            await channel.exchange_declare(exchange=exchange, exchange_type="topic")
+            await channel.exchange_declare(exchange=exchange, exchange_type=self.exchange_type)
             declare_ok = await channel.queue_declare(exclusive=True, auto_delete=True)
             
             await self.bind_subscriber(

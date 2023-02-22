@@ -112,11 +112,14 @@ class TimeseriesManager(BaseManager):
         self._total_stored = 0
 
     @property
+    def exchange_type(self) -> str:
+        return "direct"
+
+    @property
     def info(self) -> TimeseriesManagerInfo:
         """Return statistics on the manager instance. Useful for monitoring and
         debugging.
         """
-        storage_info = self._storage.worker.info if self._storage.worker else None
         return TimeseriesManagerInfo(
             name=self.__class__.__name__,
             closed=self.closed,
@@ -128,11 +131,12 @@ class TimeseriesManager(BaseManager):
             subscriber_capacity=self.max_subscribers-len(self.subscribers),
             total_subscribers_serviced=self.subscribers_serviced,
             subscribers=[subscriber.info for subscriber in self.subscribers.values()],
+            source=self._source.source,
             integration=self._integration.info,
             lock=self._lock.info,
             total_published=self._total_published,
             total_stored=self._total_stored,
-            storage=storage_info,
+            storage=self._storage.info,
             storage_buffer_size=self._storage_queue.qsize()
         )
         
@@ -321,7 +325,7 @@ class TimeseriesManager(BaseManager):
     async def _publish_messages(self, connection: Connection, exchange: str) -> None:
         """Retrieve messages from the integration and publish them to the exchange."""
         channel = await connection.channel(publisher_confirms=False)
-        await channel.exchange_declare(exchange=exchange, exchange_type="direct")
+        await channel.exchange_declare(exchange=exchange, exchange_type=self.exchange_type)
 
         # After reconnecting to RabbitMQ, we cant reliably confirm all
         # subscribers have binded to the exchange before publishing buffered
@@ -333,6 +337,9 @@ class TimeseriesManager(BaseManager):
 
         source = self._source.source
         async for msg in self._integration.get_messages():
+            if not isinstance(msg, SubscriptionMessage):
+                _LOGGER.warning("Received invalid message type %s", type(msg))
+                continue
             await self._storage_queue.put(msg)
             routing_key = f"{source}-{hash(msg.subscription)}"
             await channel.basic_publish(

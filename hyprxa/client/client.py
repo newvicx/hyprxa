@@ -108,7 +108,7 @@ class HyprxaClient:
 
     def create_topic(self, topic: Topic) -> Status:
         """Send a POST request to /topics/save."""
-        data = topic.json()
+        data = topic.dict()
         return self._post("/topics/save", Status, data)
     
     def get_topic(self, topic: str) -> TopicDocument:
@@ -121,7 +121,7 @@ class HyprxaClient:
     
     def publish_event(self, event: Event) -> Status:
         """Send a POST request to /events/publish/{event.topic}."""
-        data = event.json()
+        data = event.dict()
         return self._post(f"/events/publish/{event.topic}", Status, data)
     
     def get_event(self, topic: str, routing_key: str | None = None) -> EventDocument:
@@ -177,7 +177,7 @@ class HyprxaClient:
 
     def create_unitop(self, unitop: UnitOp) -> Status:
         """Send a POST request to /unitops/save."""
-        data = unitop.json()
+        data = unitop.dict()
         return self._post("/unitops/save", Status, data)
     
     def get_unitop(self, unitop: str) -> UnitOpDocument:
@@ -447,7 +447,7 @@ class HyprxaAsyncClient:
 
     async def create_topic(self, topic: Topic) -> Status:
         """Send a POST request to /topics/save."""
-        data = topic.json()
+        data = topic.dict()
         return await self._post("/topics/save", Status, data)
     
     async def get_topic(self, topic: str) -> TopicDocument:
@@ -460,7 +460,7 @@ class HyprxaAsyncClient:
     
     async def publish_event(self, event: Event) -> Status:
         """Send a POST request to /events/publish/{event.topic}."""
-        data = event.json()
+        data = event.dict()
         return await self._post(f"/events/publish/{event.topic}", Status, data)
     
     async def get_event(self, topic: str, routing_key: str | None = None) -> EventDocument:
@@ -516,7 +516,7 @@ class HyprxaAsyncClient:
 
     async def create_unitop(self, unitop: UnitOp) -> Status:
         """Send a POST request to /unitops/save."""
-        data = unitop.json()
+        data = unitop.dict()
         return await self._post("/unitops/save", Status, data)
     
     async def get_unitop(self, unitop: str) -> UnitOpDocument:
@@ -653,7 +653,7 @@ class HyprxaAsyncClient:
             json=json,
             headers={"Accept": "text/csv"}
         ) as response:
-            if isinstance(destination, pathlib.Path) and not destination.suffix:
+            if isinstance(destination, pathlib.Path) and destination.suffix.lower() != ".csv":
                 filename: str = None
                 header = response.headers.get("content-disposition")
                 if header:
