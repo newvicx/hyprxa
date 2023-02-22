@@ -1,6 +1,6 @@
 from collections.abc import Iterable, MutableMapping, Sequence
 from enum import Enum
-from typing import Any, Dict, List, Type
+from typing import Any, Callable, Dict, List
 
 from pydantic import BaseModel
 from starlette.requests import HTTPConnection
@@ -15,15 +15,13 @@ class Source:
     def __init__(
         self,
         source: str,
-        integration: Type[BaseIntegration],
+        integration: Callable[..., BaseIntegration],
         scopes: Sequence[str] | None,
         any_: bool,
         raise_on_no_scopes: bool,
         client_args: Sequence[Any],
         client_kwargs: Dict[str, Any]
     ) -> None:
-        if not issubclass(integration, BaseIntegration):
-            raise TypeError("'integration' must be a subclass of `Baseintegration`.")
         self.source = source
         self.integration = integration
         self.scopes = list(scopes) or []
@@ -34,7 +32,10 @@ class Source:
 
     def __call__(self) -> BaseIntegration:
         """Create a new integration instance."""
-        return self.integration(*self.client_args, **self.client_kwargs)
+        integration = self.integration(*self.client_args, **self.client_kwargs)
+        if not issubclass(integration, BaseIntegration):
+            raise TypeError("'integration' must be a subclass of `Baseintegration`.")
+        return integration
     
     async def is_authorized(self, connection: HTTPConnection) -> None:
         await requires(
@@ -91,7 +92,7 @@ _SOURCES = SourceMapping()
 
 def add_source(
     source: str,
-    integration: Type[BaseIntegration],
+    integration: Callable[..., BaseIntegration],
     scopes: Sequence[str] | None = None,
     any_: bool = False,
     raise_on_no_scopes: bool = False,
@@ -104,7 +105,7 @@ def add_source(
     
     Args:
         source: The name of the source.
-        integration: A subclass of `BaseIntegration`.
+        integration: A callable that returns a subclass of `BaseIntegration`.
         scopes: The required scopes to access the source.
         any_: If `True` and the user has any of the scopes, authorization will
             succeed. Otherwise, the user will need all scopes.

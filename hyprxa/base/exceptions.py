@@ -1,4 +1,4 @@
-from hyprxa.exceptions import HyprxaError
+from hyprxa._exceptions import HyprxaError
 
 
 

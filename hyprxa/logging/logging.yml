@@ -53,17 +53,17 @@ loggers:
         level: WARNING
     
     hyprxa.base:
-        level: DEBUG
+        level: INFO
 
     hyprxa.caching:
-        level: DEBUG
+        level: WARNING
 
     hyprxa.client:
         level: WARNING
         handlers: [console]
 
     hyprxa.events:
-        level: DEBUG
+        level: INFO
 
     hyprxa.timeseries:
         level: INFO

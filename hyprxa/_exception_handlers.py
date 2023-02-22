@@ -15,7 +15,7 @@ from hyprxa.base.exceptions import (
     SubscriptionTimeout
 )
 from hyprxa.caching.exceptions import CacheError
-from hyprxa.exceptions import NotConfiguredError
+from hyprxa._exceptions import NotConfiguredError
 from hyprxa.timeseries.exceptions import (
     IntegrationSubscriptionError,
     SubscriptionLockError

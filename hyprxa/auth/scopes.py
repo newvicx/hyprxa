@@ -5,8 +5,8 @@ from fastapi.requests import HTTPConnection
 from starlette.authentication import AuthCredentials
 from starlette.types import Scope
 
-from hyprxa.exceptions import NotConfiguredError
 from hyprxa.auth.models import BaseUser
+from hyprxa._exceptions import NotConfiguredError
 
 
 

@@ -26,7 +26,6 @@ from hyprxa.topics.models import (
     TopicSubscription
 )
 from hyprxa.util.filestream import FileWriter, chunked_transfer
-from hyprxa.util.formatting import format_event_row
 from hyprxa.util.status import Status, StatusOptions
 from hyprxa.util.sse import sse_handler
 from hyprxa.util.websockets import ws_handler
@@ -135,7 +134,7 @@ async def recorded(
             send=send,
             buffer=buffer,
             writer=writer,
-            formatter=format_event_row,
+            formatter=None,
             logger=_LOGGER,
             chunk_size=chunk_size
         ),

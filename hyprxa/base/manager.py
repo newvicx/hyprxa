@@ -72,7 +72,6 @@ class BaseManager:
         self._subscriber_connections: Dict[asyncio.Task, BaseSubscriber] = {}
         self._ready: asyncio.Event = asyncio.Event()
         self._runner: asyncio.Task = None
-        self._loop: asyncio.AbstractEventLoop = asyncio.get_event_loop()
 
         self.created = datetime.utcnow()
         self._subscribers_serviced = 0
@@ -143,7 +142,7 @@ class BaseManager:
         if not self.closed:
             return
 
-        runner: asyncio.Task = Context().run(self._loop.create_task, self.run())
+        runner: asyncio.Task = Context().run(asyncio.create_task, self.run())
         runner.add_done_callback(lambda _: self.close())
         self._runner = runner
 
@@ -232,7 +231,7 @@ class BaseManager:
         **kwargs: Any
     ) -> None:
         """Add a background task to the manager."""
-        fut = self._loop.create_task(coro(*args, **kwargs))
+        fut = asyncio.create_task(coro(*args, **kwargs))
         for callback in callbacks:
             fut.add_done_callback(callback)
         fut.add_done_callback(self._log_background_result)
@@ -257,7 +256,7 @@ class BaseManager:
         connection: Connection
     ) -> None:
         """Create a connection between a subscriber and the exchange."""
-        subscriber_connection = self._loop.create_task(
+        subscriber_connection = asyncio.create_task(
             self._connect_subscriber(
                 subscriber,
                 connection,

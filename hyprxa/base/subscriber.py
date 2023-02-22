@@ -41,7 +41,6 @@ class BaseSubscriber:
         self._data: Deque[str] = None
         self._data_waiter: asyncio.Future = None
         self._stop_waiter: asyncio.Future = None
-        self._loop: asyncio.AbstractEventLoop = asyncio.get_event_loop()
 
         self._created = datetime.now()
         self._total_published = 0
@@ -115,7 +114,7 @@ class BaseSubscriber:
         self._subscriptions.update(subscriptions)
         self._data = deque(maxlen=maxlen)
         
-        waiter = self._loop.create_future()
+        waiter = asyncio.Future()
         self._stop_waiter = waiter
         return waiter
 
@@ -128,7 +127,7 @@ class BaseSubscriber:
             return SubscriberCodes.STOPPED
         
         stop = self._stop_waiter
-        waiter = self._loop.create_future()
+        waiter = asyncio.Future()
         self._data_waiter = waiter
         try:
             await asyncio.wait([waiter, stop], return_when=asyncio.FIRST_COMPLETED)

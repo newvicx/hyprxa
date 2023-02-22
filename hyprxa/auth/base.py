@@ -1,7 +1,12 @@
 from typing import Tuple
 
-from starlette.authentication import AuthenticationBackend, AuthCredentials
+from starlette.authentication import (
+    AuthCredentials,
+    AuthenticationBackend,
+    AuthenticationError
+)
 from starlette.requests import HTTPConnection
+from starlette.responses import JSONResponse, Response
 
 from hyprxa.auth.models import BaseUser, TokenHandler
 from hyprxa.auth.protocols import AuthenticationClient
@@ -31,3 +36,11 @@ class BaseAuthenticationBackend(AuthenticationBackend):
         other unauthenticated user class.
         """
         raise NotImplementedError()
+    
+
+def on_error(conn: HTTPConnection, err: AuthenticationError) -> Response:
+    """An error handler function for the `AuthenticationMiddleware`."""
+    return JSONResponse(
+        {"detail": f"The request cannot be completed. {str(err)}"},
+        status_code=500
+    )

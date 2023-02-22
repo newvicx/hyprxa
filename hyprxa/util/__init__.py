@@ -12,7 +12,8 @@ from .backoff import (
     ExponentialBackoff,
     FullJitterBackoff
 )
-from .defaults import DEFAULT_TIMEZONE
+from .context import get_user_identity
+from .defaults import DEFAULT_APPNAME, DEFAULT_DATABASE, DEFAULT_TIMEZONE
 from .filestream import (
     FileWriter,
     chunked_transfer,
@@ -30,6 +31,13 @@ from .formatting import (
 )
 from .json import json_dumps, json_loads
 from .logging import cast_logging_level
+from .models import BaseModel
+from .mongo import (
+    DatabaseUnavailable,
+    MongoWorker,
+    SessionManager,
+    watch_collection
+)
 from .sse import SSE, SSEParser, sse_handler
 from .status import Status, StatusOptions
 from .subprocess import log_subprocess
@@ -58,6 +66,9 @@ __all__ = [
     "EqualJitterBackoff",
     "ExponentialBackoff",
     "FullJitterBackoff",
+    "get_user_identity",
+    "DEFAULT_APPNAME",
+    "DEFAULT_DATABASE",
     "DEFAULT_TIMEZONE",
     "FileWriter",
     "chunked_transfer",
@@ -73,6 +84,11 @@ __all__ = [
     "json_dumps",
     "json_loads",
     "cast_logging_level",
+    "BaseModel",
+    "DatabaseUnavailable",
+    "MongoWorker",
+    "SessionManager",
+    "watch_collection",
     "SSE",
     "SSEParser",
     "sse_handler",

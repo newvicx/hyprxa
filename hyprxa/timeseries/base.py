@@ -28,7 +28,6 @@ class BaseConnection:
         self._data_queue: asyncio.Queue = None
         self._online: bool = False
         self._started: asyncio.Event = asyncio.Event()
-        self._loop: asyncio.AbstractEventLoop = asyncio.get_event_loop()
 
         self._created = datetime.utcnow()
         self._total_published = 0
@@ -125,7 +124,6 @@ class BaseIntegration:
         self._connections: Dict[asyncio.Task, BaseConnection] = {}
         self._data: asyncio.Queue = asyncio.Queue(maxsize=max_buffered_messages)
         self._dropped: asyncio.Queue = asyncio.Queue()
-        self._loop: asyncio.AbstractEventLoop = asyncio.get_event_loop()
 
         self._created = datetime.utcnow()
         self._connections_serviced = 0
@@ -253,7 +251,7 @@ class BaseIntegration:
     def __del__(self):
         try:
             if not self.closed:
-                loop = asyncio.get_running_loop()
+                loop = asyncio.get_event_loop()
                 if loop.is_running():
                     loop.create_task(self.close())
         except Exception:

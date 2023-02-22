@@ -8,12 +8,12 @@ from hyprxa.base.subscriber import BaseSubscriber
 from hyprxa.caching.singleton import singleton
 from hyprxa.dependencies.db import get_mongo_client
 from hyprxa.dependencies.unitops import get_unitop
-from hyprxa.exceptions import NotConfiguredError
 from hyprxa.settings import TIMESERIES_SETTINGS, TIMESERIES_MANAGER_SETTINGS
 from hyprxa.timeseries.manager import TimeseriesManager
 from hyprxa.timeseries.models import AnySourceSubscriptionRequest
 from hyprxa.timeseries.sources import _SOURCES
 from hyprxa.unitops.models import UnitOpDocument
+from hyprxa._exceptions import NotConfiguredError
 
 
 

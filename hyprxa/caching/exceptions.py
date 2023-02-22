@@ -6,13 +6,13 @@ from hyprxa.util.caching import (
     get_fqn_type,
     get_return_value_type
 )
-from hyprxa.exceptions import HyprxaError
 from hyprxa.util.formatting import format_docstring
+from hyprxa._exceptions import HyprxaError
 
 
 
 class CachingException(HyprxaError):
-    """Base obj cache exception that all exceptions raised by cache decorators
+    """Base cache exception that all exceptions raised by cache decorators
     derive from.
     """
 

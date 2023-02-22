@@ -2,6 +2,7 @@ import inspect
 import logging
 import logging.config
 import pathlib
+import secrets
 import threading
 from typing import Callable, List
 
@@ -17,11 +18,13 @@ from pydantic import (
     Field,
     FilePath,
     MongoDsn,
+    SecretStr,
     StrictStr,
     confloat,
     conint
 )
 
+from hyprxa.auth.models import TokenHandler
 from hyprxa.base.manager import BaseManager
 from hyprxa.events.handler import EventWorker, MongoEventHandler
 from hyprxa.events.manager import EventManager
@@ -46,6 +49,28 @@ _TM = inspect.signature(TimeseriesManager).parameters
 
 
 class HyprxaSettings(BaseSettings):
+    secret_key: SecretStr = Field(
+        default=secrets.token_hex(32),
+        description=format_docstring("""The secret key used to sign all JWT's
+        issued by a `TokenHandler`. Defaults to a random 32 bytes hex value
+        (secrets.token_hex(32)). This should be set as an env variable outside
+        of testing otherwise a new secret key will be used on each restart""")
+    )
+    token_expire: int = Field(
+        default=1800,
+        description=format_docstring("""The expiration time of token (in seconds)
+        after it is generated. Defaults to `1800` (30 minutes)""")
+    )
+    hash_algorithm: str = Field(
+        default="HS256",
+        description=format_docstring("""The hashing algorithm used to hash the
+        secret key when creating a token. Defaults to 'HS256'""")
+    )
+    allow_origins: List[str] = Field(
+        default=["http://localhost*", "https://localhost*"],
+        description=format_docstring("""The allowed origins for CORS middleware.
+        Defaults to 'localhost' for both HTTP and HTTPS.""")
+    )
     admin_scopes: List[str] = Field(
         default_factory=list,
         description=format_docstring("""The admin scopes for the application.
@@ -102,6 +127,13 @@ class HyprxaSettings(BaseSettings):
         description=format_docstring("""The path to the acquire an access token.
         Defaults to '/token'""")
     )
+
+    def get_token_handler(self) -> TokenHandler:
+        return TokenHandler(
+            key=self.secret_key.get_secret_value(),
+            expire=self.token_expire,
+            algorithm=self.hash_algorithm
+        )
 
     class Config:
         env_file=".env"
@@ -163,7 +195,7 @@ class MongoSettings(BaseSettings):
         collections. Defaults to '{}'""".format(DEFAULT_APPNAME))
     )
 
-    def get_async_client(self) -> AsyncIOMotorClient:
+    async def get_async_client(self) -> AsyncIOMotorClient:
         return AsyncIOMotorClient(
             self.connection_uri,
             heartbeatFrequencyMS=self.heartbeat,

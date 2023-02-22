@@ -6,8 +6,8 @@ from hyprxa.auth.base import BaseAuthenticationBackend
 from hyprxa.auth.models import BaseUser, TokenHandler
 from hyprxa.auth.protocols import AuthenticationClient
 from hyprxa.auth.scopes import requires
-from hyprxa.exceptions import NotConfiguredError
 from hyprxa.settings import HYPRXA_SETTINGS
+from hyprxa._exceptions import NotConfiguredError
 
 
 

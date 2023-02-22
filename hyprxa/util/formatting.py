@@ -1,7 +1,5 @@
-import json
 import re
-from datetime import datetime
-from typing import Any, Dict, Tuple
+from typing import Tuple
 
 from hyprxa.types import JSONPrimitive, TimeseriesRow
 
@@ -33,12 +31,6 @@ def format_timeseries_rows(row: TimeseriesRow) -> Tuple[JSONPrimitive]:
     for a file format.
     """
     return (row[0].isoformat(), *row[1])
-
-
-def format_event_row(row: Tuple[datetime, str, str, Dict[str, Any]]) -> Tuple[str, str, str, str]:
-    """Format an event row as an iterable which can be converted to a row for
-    a file format."""
-    return (row[0].isoformat(), row[1], row[2], json.dumps(row[3]))
 
 
 def format_docstring(description: str) -> str:

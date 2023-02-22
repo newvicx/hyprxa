@@ -1,3 +1,4 @@
+from .base import BaseCache, BaseCacheCollection, BaseCachedFunction
 from .exceptions import (
     CachingException,
     CacheError,
@@ -10,6 +11,9 @@ from .singleton import singleton
 
 
 __all__ = [
+    "BaseCache",
+    "BaseCacheCollection",
+    "BaseCachedFunction",
     "CachingException",
     "CacheError",
     "UnhashableParamError",

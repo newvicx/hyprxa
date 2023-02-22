@@ -1,9 +1,12 @@
+import json
 from collections.abc import AsyncIterable
 from datetime import datetime
+from typing import List, Tuple
 
 from motor.motor_asyncio import AsyncIOMotorCollection
 
 from hyprxa.events.models import EventDocument, ValidatedEventDocument
+from hyprxa.types import JSONPrimitive
 
 
 
@@ -13,7 +16,7 @@ async def get_events(
     start_time: datetime,
     end_time: datetime | None = None,
     routing_key: str | None = None,
-) -> AsyncIterable[EventDocument]:
+) -> AsyncIterable[Tuple[JSONPrimitive, ...]]:
     """Stream events matching both topic and routing key in a time range.
     
     Args:
@@ -24,7 +27,7 @@ async def get_events(
         routing_key: The routing key for events to query.
 
     Yields:
-        document: An `EventDocument`
+        row: An event row.
 
     Raises:
         ValueError: If 'start_time' >= 'end_time'.
@@ -37,24 +40,28 @@ async def get_events(
     query = {"topic": topic, "timestamp": {"$gte": start_time, "$lte": end_time}}
     if routing_key:
         query.update({"events.routing_key": routing_key})
+    
     async for events in collection.find(
         query,
         projection={"events": 1, "_id": 0}
     ).sort("timestamp", 1):
         if events:
-            documents = [ValidatedEventDocument(**event) for event in events["events"]]
+            documents: List[EventDocument] = [
+                ValidatedEventDocument(**event) for event in events["events"]
+            ]
             if routing_key:
                 documents = [document for document in documents if document.routing_key == routing_key]
             if documents:
                 index = sorted([(document.timestamp, i) for i, document in enumerate(documents)])
-                for _, i in index:
-                    if documents[i].timestamp >= start_time and documents[i].timestamp <= end_time:
+                for timestamp, i in index:
+                    if timestamp >= start_time and timestamp <= end_time:
                         document = documents[i]
+                        payload = json.dumps(document.payload)
                         row = (
-                            document.timestamp,
+                            timestamp.isoformat(),
                             document.posted_by,
                             document.topic,
                             document.routing_key,
-                            document.payload
+                            payload
                         )
                         yield row

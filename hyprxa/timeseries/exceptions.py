@@ -1,5 +1,5 @@
 from hyprxa.base import ManagerClosed, SubscriptionError
-from hyprxa.exceptions import HyprxaError
+from hyprxa._exceptions import HyprxaError
 
 
 

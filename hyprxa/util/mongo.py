@@ -2,7 +2,7 @@ import atexit
 import logging
 import queue
 import threading
-from collections.abc import AsyncIterable
+from collections.abc import AsyncIterable, Awaitable
 from contextlib import asynccontextmanager
 from contextvars import Context
 from typing import Any, AsyncContextManager, Callable, Dict, List
@@ -15,8 +15,8 @@ from pymongo.errors import (
     WaitQueueTimeoutError
 )
 
-from hyprxa.exceptions import HyprxaError
 from hyprxa.util.defaults import DEFAULT_DATABASE
+from hyprxa._exceptions import HyprxaError
 
 
 
@@ -209,7 +209,7 @@ class SessionManager:
     will close when all requests have completed.
     """
 
-    def __init__(self, factory: Callable[[], AsyncIOMotorClient]) -> None:
+    def __init__(self, factory: Callable[[], Awaitable[AsyncIOMotorClient]]) -> None:
         self._factory = factory
         self._client: AsyncIOMotorClient = None
         self._count: int = 0
@@ -220,7 +220,7 @@ class SessionManager:
             self._count += 1
             try:
                 if self._client is None:
-                    client = self._factory()
+                    client = await self._factory()
                     self._client = client
                 
                 pong = await self._client.admin.command("ping")

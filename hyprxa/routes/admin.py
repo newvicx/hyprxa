@@ -32,7 +32,7 @@ async def logs(
     db: AsyncIOMotorClient = Depends(get_exclusive_mongo_client)
 ) -> EventSourceResponse:
     """Stream logs from the API. The logging configuration must be using the
-    `MongoLogHandler`.
+    `MongoLogHandler` and the database must be replica set.
     """
     try:
         await db.admin.command("replSetGetStatus")
@@ -44,6 +44,7 @@ async def logs(
     
     handlers = [logging.getLogger(name).handlers for name in logging.root.manager.loggerDict]
     handlers.append(logging.root.handlers)
+
     for handler in itertools.chain.from_iterable(handlers):
         if isinstance(handler, MongoLogHandler):
             worker = handler.get_worker()
@@ -53,7 +54,9 @@ async def logs(
             status_code=status.HTTP_501_NOT_IMPLEMENTED,
             detail="Logging to database is not configured."
         )
+    
     await anyio.to_thread.run_sync(worker.wait, 2)
+    
     if worker.is_stopped:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

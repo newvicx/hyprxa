@@ -233,7 +233,7 @@ class EventManager(BaseManager):
 
     async def _publish_events(self, connection: Connection, exchange: str) -> None:
         """Publish enqueued events to the manager."""
-        channel = await connection.channel(publisher_confirms=False)
+        channel = await connection.channel(publisher_confirms=True)
         await channel.exchange_declare(exchange=exchange, exchange_type="topic")
 
         # After reconnecting to RabbitMQ, we cant reliably confirm all
