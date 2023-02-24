@@ -56,4 +56,4 @@ I am working on writing the documentation for Hyprxa. Stay tuned!
 
 ## Development
 
-Hyprxa is under active development. I am discovering new bugs as I go and creating new releases rapidly until the API is more or less stable. Hyprxa will remain as an alpha release until proper code coverage testing and documentation is complete. Please report any bugs.
+**Hyrxa is NOT stable** it is under active development. I am discovering new bugs as I go and creating new releases rapidly until the API is more or less stable. Hyprxa will remain as an alpha release until proper code coverage testing and documentation is complete. If you do want to test it out, please report any bugs.

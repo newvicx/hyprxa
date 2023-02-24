@@ -1,12 +1,13 @@
 from collections.abc import Iterable, MutableMapping, Sequence
 from enum import Enum
-from typing import Any, Callable, Dict, List
+from typing import Any, Callable, Dict, List, Type
 
 from pydantic import BaseModel
 from starlette.requests import HTTPConnection
 
 from hyprxa.auth.scopes import requires
 from hyprxa.timeseries.base import BaseIntegration
+from hyprxa.timeseries.models import BaseSourceSubscription
 
 
 
@@ -16,6 +17,7 @@ class Source:
         self,
         source: str,
         integration: Callable[..., BaseIntegration],
+        subscription_model: Type[BaseSourceSubscription],
         scopes: Sequence[str] | None,
         any_: bool,
         raise_on_no_scopes: bool,
@@ -24,6 +26,7 @@ class Source:
     ) -> None:
         self.source = source
         self.integration = integration
+        self.subscription_model = subscription_model
         self.scopes = list(scopes) or []
         self.any = any_
         self.raise_on_no_scopes = raise_on_no_scopes
@@ -93,6 +96,7 @@ _SOURCES = SourceMapping()
 def add_source(
     source: str,
     integration: Callable[..., BaseIntegration],
+    subscription_model: Type[BaseSourceSubscription],
     scopes: Sequence[str] | None = None,
     any_: bool = False,
     raise_on_no_scopes: bool = False,
@@ -106,6 +110,8 @@ def add_source(
     Args:
         source: The name of the source.
         integration: A callable that returns a subclass of `BaseIntegration`.
+        subscription_model: The subscription model to validate subscription
+            requests against.
         scopes: The required scopes to access the source.
         any_: If `True` and the user has any of the scopes, authorization will
             succeed. Otherwise, the user will need all scopes.
@@ -117,6 +123,7 @@ def add_source(
     s = Source(
         source=source,
         integration=integration,
+        subscription_model=subscription_model,
         scopes=scopes,
         any_=any_,
         raise_on_no_scopes=raise_on_no_scopes,

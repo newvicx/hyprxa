@@ -38,3 +38,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## 0.0.5 (22nd Feb, 2023)
 
 - Minor bug fixes
+
+## 0.0.6 (24th Feb, 2023)
+
+- Major bug fixes across the board
+- Additional admin endpoints for logs
+- Get timeseries data for a single data item in a unitop

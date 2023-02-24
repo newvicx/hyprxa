@@ -2,7 +2,7 @@ from collections.abc import Sequence
 from enum import Enum
 from typing import Dict
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Query, status
 from pydantic import Json
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorCollection
 
@@ -76,6 +76,7 @@ async def get_unitop(
 
 async def get_unitops(
     q: Json,
+    map_subscriptions_: bool = Query(default=False, alias="mapSubscriptions"),
     collection: AsyncIOMotorCollection = Depends(get_unitop_collection)
 ) -> UnitOpQueryResult:
     """Get a result set of unitops from a freeform query."""
@@ -84,6 +85,8 @@ async def get_unitops(
     except TypeError: # Invalid query
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid query.")
     if documents:
+        if map_subscriptions_:
+            documents = [await map_subscriptions(unitop=document) for document in documents]
         return UnitOpQueryResult(items=[UnitOpDocument(**document) for document in documents])
     return UnitOpQueryResult()
 
@@ -106,3 +109,16 @@ async def validate_sources(unitop: UnitOp) -> UnitOp:
         ) from e
     else:
         return unitop
+
+
+async def map_subscriptions(
+    unitop: UnitOpDocument = Depends(get_unitop)
+) -> UnitOpDocument:
+    """Map the subscriptions in the data mapping to the subscription model for
+    the source.
+    """
+    source_mapping = {source.source: source.subscription_model for source in _SOURCES}
+    for data_item, subscription in unitop.data_mapping.copy().items():
+        subscription_model = source_mapping.get(subscription.source)
+        unitop.data_mapping.update({data_item: subscription_model.parse_obj(subscription)})
+    return unitop

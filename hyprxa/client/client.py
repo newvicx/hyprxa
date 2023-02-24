@@ -120,9 +120,9 @@ class HyprxaClient:
         return self._get("/topics/search", TopicQueryResult)
     
     def publish_event(self, event: Event) -> Status:
-        """Send a POST request to /events/publish/{event.topic}."""
+        """Send a POST request to /events/publish."""
         data = event.dict()
-        return self._post(f"/events/publish/{event.topic}", Status, data)
+        return self._post(f"/events/publish", Status, data)
     
     def get_event(self, topic: str, routing_key: str | None = None) -> EventDocument:
         """Send a GET request to /events/{topic}/last."""
@@ -143,7 +143,7 @@ class HyprxaClient:
     def download_events(
         self,
         topic: str,
-        destination: os.PathLike | TextIO = None,
+        destination: os.PathLike | TextIO | tempfile._TemporaryFileWrapper = None,
         start_time: datetime | None = None,
         end_time: datetime | None = None,
         routing_key: str | None = None,
@@ -160,9 +160,11 @@ class HyprxaClient:
             routing_key=routing_key,
             timezone=timezone
         )
-        self._download_to_csv(
+        self._download(
             method="GET",
             path=path,
+            suffix=".csv",
+            accept="text/csv",
             params=params,
             destination=destination
         )
@@ -180,16 +182,17 @@ class HyprxaClient:
         data = unitop.dict()
         return self._post("/unitops/save", Status, data)
     
-    def get_unitop(self, unitop: str) -> UnitOpDocument:
+    def get_unitop(self, unitop: str, map_subscriptions: bool = False) -> UnitOpDocument:
         """Send a GET request to /unitops/search/{unitop}."""
-        return self._get(f"/unitops/search/{unitop}", UnitOpDocument)
+        params = QueryParams(mapSubscriptions=map_subscriptions)
+        return self._get(f"/unitops/search/{unitop}", UnitOpDocument, params)
     
-    def get_unitops(self, q: str | Dict[str, Any]) -> UnitOpQueryResult:
-        """Set a GET request to /unitops/search."""
+    def get_unitops(self, q: str | Dict[str, Any], map_subscriptions: bool = False) -> UnitOpQueryResult:
+        """Send a GET request to /unitops/search."""
         if isinstance(q, dict):
             q = json.dumps(q)
         
-        params = QueryParams(q=q)
+        params = QueryParams(q=q, mapSubscriptions=map_subscriptions)
         return self._get("/timeseries/unitop/search", UnitOpQueryResult, params=params)
     
     def stream_data(self, unitop: str) -> Iterable[SubscriptionMessage]:
@@ -198,10 +201,29 @@ class HyprxaClient:
         for data in self._sse("GET", path):
             yield SubscriptionMessage.parse_obj(data)
 
+    def get_data(
+        self,
+        unitop: str,
+        data_item: str,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+        timezone: str | None = None,
+        limit: int | None = None
+    ) -> SubscriptionMessage:
+        """Send a GET request to /timeseries/{unitop}"""
+        params = QueryParams(
+            dataItem=data_item,
+            startTime=start_time,
+            endTime=end_time,
+            timezone=timezone,
+            limit=limit
+        )
+        return self._get(f"/timeseries/{unitop}", SubscriptionMessage, params)
+
     def download_data(
         self,
         unitop: str,
-        destination: os.PathLike | TextIO = None,
+        destination: os.PathLike | TextIO | tempfile._TemporaryFileWrapper = None,
         start_time: datetime | None = None,
         end_time: datetime | None = None,
         timezone: str | None = None,
@@ -218,9 +240,11 @@ class HyprxaClient:
             timezone=timezone,
             scan_rate=scan_rate
         )
-        self._download_to_csv(
+        self._download(
             method="GET",
             path=path,
+            suffix=".csv",
+            accept="text/csv",
             params=params,
             destination=destination
         )
@@ -237,6 +261,29 @@ class HyprxaClient:
         """Send a GET request to /admin/logs and stream log data."""
         for log in self._sse("GET", "/admin/logs"):
             yield log
+
+    def download_logs(
+        self,
+        q: str | Dict[str, Any],
+        destination: os.PathLike | TextIO | tempfile._TemporaryFileWrapper = None,
+    ) -> None:
+        """Send a GET request to /admin/logs/recorded
+        
+        Data is in JSONlines format.
+        """
+        path = "/admin/logs/recorded"
+        if isinstance(q, dict):
+            q = json.dumps(q)
+        
+        params = QueryParams(q=q)
+        self._download(
+            method="GET",
+            path=path,
+            suffix=".jsonl",
+            accept="application/x-jsonlines",
+            params=params,
+            destination=destination
+        )
 
     def _get(
         self,
@@ -279,15 +326,17 @@ class HyprxaClient:
                     if event.event == "message":
                         yield json.loads(event.data)
 
-    def _download_to_csv(
+    def _download(
         self,
         method: str,
         path: str,
+        suffix: str,
+        accept: str,
         params: QueryParams | None = None,
         json: Any | None = None,
-        destination: os.PathLike | TextIO = None,
+        destination: os.PathLike | TextIO | tempfile._TemporaryFileWrapper = None,
     ) -> None:
-        """Download CSV data to TextIO object."""
+        """Download data to TextIO object."""
         def transfer_temp_to_file(tfh: TextIO, fh: TextIO) -> None:
             while True:
                 b = tfh.read(10_240)
@@ -296,13 +345,13 @@ class HyprxaClient:
                 fh.write(b)
 
         if destination is not None:
-            if isinstance(destination, io.TextIOBase):
+            if isinstance(destination, (io.TextIOBase, tempfile._TemporaryFileWrapper)):
                 if not destination.writable():
                     raise ValueError(f"FileLike destination must be writable")
             else:
                 destination = pathlib.Path(destination)
-                if destination.suffix and destination.suffix.lower() != ".csv":
-                    raise ValueError("PathLike destination must be '.csv'")
+                if destination.suffix and destination.suffix.lower() != suffix:
+                    raise ValueError(f"PathLike destination must be '{suffix}'")
         else:
             destination = pathlib.Path("~").expanduser().joinpath("./.hyprxa/downloads")
             os.makedirs(destination, exist_ok=True)
@@ -312,18 +361,18 @@ class HyprxaClient:
             path,
             params=params,
             json=json,
-            headers={"Accept": "text/csv"}
+            headers={"Accept": accept}
         ) as response:
-            if isinstance(destination, pathlib.Path) and not destination.suffix:
+            if isinstance(destination, pathlib.Path) and destination.suffix.lower() != suffix:
                 filename: str = None
                 header = response.headers.get("content-disposition")
                 if header:
                     try:
-                        filename = cgi.parse_header(header)[1].get(filename)
+                        filename = cgi.parse_header(header)[1].get("filename")
                     except Exception:
                         pass
                 if not filename:
-                    filename = f"{int(datetime.now().timestamp()*1_000_000)}.csv"
+                    filename = f"{int(datetime.now().timestamp()*1_000_000)}{suffix}"
                 destination = destination.joinpath(f"./{filename}")
             
             with tempfile.SpooledTemporaryFile(max_size=10_485_760, mode="w+") as tfh:
@@ -460,9 +509,9 @@ class HyprxaAsyncClient:
         return await self._get("/topics/search", TopicQueryResult)
     
     async def publish_event(self, event: Event) -> Status:
-        """Send a POST request to /events/publish/{event.topic}."""
+        """Send a POST request to /events/publish."""
         data = event.dict()
-        return await self._post(f"/events/publish/{event.topic}", Status, data)
+        return await self._post(f"/events/publish", Status, data)
     
     async def get_event(self, topic: str, routing_key: str | None = None) -> EventDocument:
         """Send a GET request to /events/{topic}/last."""
@@ -473,7 +522,7 @@ class HyprxaAsyncClient:
         self,
         topic: str,
         routing_key: str | None = None
-    ) -> Iterable[EventDocument]:
+    ) -> AsyncIterable[EventDocument]:
         """Send a GET request to /events/stream/{topic} and stream events."""
         params = QueryParams(routing_key=routing_key)
         path = f"/events/stream/{topic}"
@@ -483,7 +532,7 @@ class HyprxaAsyncClient:
     async def download_events(
         self,
         topic: str,
-        destination: os.PathLike | TextIO = None,
+        destination: os.PathLike | TextIO | tempfile._TemporaryFileWrapper = None,
         start_time: datetime | None = None,
         end_time: datetime | None = None,
         routing_key: str | None = None,
@@ -500,9 +549,11 @@ class HyprxaAsyncClient:
             routing_key=routing_key,
             timezone=timezone
         )
-        await self._download_to_csv(
+        await self._download(
             method="GET",
             path=path,
+            suffix=".csv",
+            accept="text/csv",
             params=params,
             destination=destination
         )
@@ -520,28 +571,48 @@ class HyprxaAsyncClient:
         data = unitop.dict()
         return await self._post("/unitops/save", Status, data)
     
-    async def get_unitop(self, unitop: str) -> UnitOpDocument:
+    async def get_unitop(self, unitop: str, map_subscriptions: bool = False) -> UnitOpDocument:
         """Send a GET request to /unitops/search/{unitop}."""
-        return await self._get(f"/unitops/search/{unitop}", UnitOpDocument)
+        params = QueryParams(mapSubscriptions=map_subscriptions)
+        return await self._get(f"/unitops/search/{unitop}", UnitOpDocument, params)
     
-    async def get_unitops(self, q: str | Dict[str, Any]) -> UnitOpQueryResult:
-        """Set a GET request to /unitops/search."""
+    async def get_unitops(self, q: str | Dict[str, Any], map_subscriptions: bool = False) -> UnitOpQueryResult:
+        """Send a GET request to /unitops/search."""
         if isinstance(q, dict):
             q = json.dumps(q)
         
-        params = QueryParams(q=q)
+        params = QueryParams(q=q, mapSubscriptions=map_subscriptions)
         return await self._get("/timeseries/unitop/search", UnitOpQueryResult, params=params)
     
-    async def stream_data(self, unitop: str) -> Iterable[SubscriptionMessage]:
+    async def stream_data(self, unitop: str) -> AsyncIterable[SubscriptionMessage]:
         """Send a GET request to /timeseries/stream/{unitop} and stream data."""
         path = f"/timeseries/stream/{unitop}"
         async for data in self._sse("GET", path):
             yield SubscriptionMessage.parse_obj(data)
 
+    async def get_data(
+        self,
+        unitop: str,
+        data_item: str,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+        timezone: str | None = None,
+        limit: int | None = None
+    ) -> SubscriptionMessage:
+        """Send a GET request to /timeseries/{unitop}"""
+        params = QueryParams(
+            dataItem=data_item,
+            startTime=start_time,
+            endTime=end_time,
+            timezone=timezone,
+            limit=limit
+        )
+        return await self._get(f"/timeseries/{unitop}", SubscriptionMessage, params)
+
     async def download_data(
         self,
         unitop: str,
-        destination: os.PathLike | TextIO = None,
+        destination: os.PathLike | TextIO | tempfile._TemporaryFileWrapper = None,
         start_time: datetime | None = None,
         end_time: datetime | None = None,
         timezone: str | None = None,
@@ -558,9 +629,11 @@ class HyprxaAsyncClient:
             timezone=timezone,
             scan_rate=scan_rate
         )
-        await self._download_to_csv(
+        await self._download(
             method="GET",
             path=path,
+            suffix=".csv",
+            accept="text/csv",
             params=params,
             destination=destination
         )
@@ -573,10 +646,33 @@ class HyprxaAsyncClient:
         """Send a GET request to /admin/info."""
         return await self._get("/admin/info", Info)
 
-    async def stream_logs(self) -> Iterable[Any]:
+    async def stream_logs(self) -> AsyncIterable[Any]:
         """Send a GET request to /admin/logs and stream log data."""
         async for log in self._sse("GET", "/admin/logs"):
             yield log
+
+    async def download_logs(
+        self,
+        q: str | Dict[str, Any],
+        destination: os.PathLike | TextIO | tempfile._TemporaryFileWrapper = None,
+    ) -> None:
+        """Send a GET request to /admin/logs/recorded
+        
+        Data is in JSONlines format.
+        """
+        path = "/admin/logs/recorded"
+        if isinstance(q, dict):
+            q = json.dumps(q)
+        
+        params = QueryParams(q=q)
+        await self._download(
+            method="GET",
+            path=path,
+            suffix=".jsonl",
+            accept="application/x-jsonlines",
+            params=params,
+            destination=destination
+        )
 
     async def _get(
         self,
@@ -619,15 +715,17 @@ class HyprxaAsyncClient:
                     if event.event == "message":
                         yield json.loads(event.data)
 
-    async def _download_to_csv(
+    async def _download(
         self,
         method: str,
         path: str,
+        suffix: str,
+        accept: str,
         params: QueryParams | None = None,
         json: Any | None = None,
-        destination: os.PathLike | TextIO = None,
+        destination: os.PathLike | TextIO | tempfile._TemporaryFileWrapper = None,
     ) -> None:
-        """Download CSV data to TextIO object."""
+        """Download data to TextIO object."""
         def transfer_temp_to_file(tfh: TextIO, fh: TextIO) -> None:
             while True:
                 b = tfh.read(10_240)
@@ -636,13 +734,13 @@ class HyprxaAsyncClient:
                 fh.write(b)
 
         if destination is not None:
-            if isinstance(destination, io.TextIOBase):
+            if isinstance(destination, (io.TextIOBase, tempfile._TemporaryFileWrapper)):
                 if not destination.writable():
                     raise ValueError(f"FileLike destination must be writable")
             else:
                 destination = pathlib.Path(destination)
-                if destination.suffix and destination.suffix.lower() != ".csv":
-                    raise ValueError("PathLike destination must be '.csv'")
+                if destination.suffix and destination.suffix.lower() != suffix:
+                    raise ValueError(f"PathLike destination must be '{suffix}'")
         else:
             destination = pathlib.Path("~").expanduser().joinpath("./.hyprxa/downloads")
             os.makedirs(destination, exist_ok=True)
@@ -652,18 +750,18 @@ class HyprxaAsyncClient:
             path,
             params=params,
             json=json,
-            headers={"Accept": "text/csv"}
+            headers={"Accept": accept}
         ) as response:
-            if isinstance(destination, pathlib.Path) and destination.suffix.lower() != ".csv":
+            if isinstance(destination, pathlib.Path) and destination.suffix.lower() != suffix:
                 filename: str = None
                 header = response.headers.get("content-disposition")
                 if header:
                     try:
-                        filename = cgi.parse_header(header)[1].get(filename)
+                        filename = cgi.parse_header(header)[1].get("filename")
                     except Exception:
                         pass
                 if not filename:
-                    filename = f"{int(datetime.now().timestamp()*1_000_000)}.csv"
+                    filename = f"{int(datetime.now().timestamp()*1_000_000)}{suffix}"
                 destination = destination.joinpath(f"./{filename}")
             
             with tempfile.SpooledTemporaryFile(max_size=10_485_760, mode="w+") as tfh:
@@ -675,7 +773,9 @@ class HyprxaAsyncClient:
                         with open(destination, mode='w') as fh:
                             transfer_temp_to_file(tfh, fh)
                     else:
+                        fh = destination
                         transfer_temp_to_file(tfh, fh)
+
 
     async def __aenter__(self):
         """Start the client.

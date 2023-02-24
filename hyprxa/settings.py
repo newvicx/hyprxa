@@ -195,7 +195,7 @@ class MongoSettings(BaseSettings):
         collections. Defaults to '{}'""".format(DEFAULT_APPNAME))
     )
 
-    async def get_async_client(self) -> AsyncIOMotorClient:
+    def get_async_client(self) -> AsyncIOMotorClient:
         return AsyncIOMotorClient(
             self.connection_uri,
             heartbeatFrequencyMS=self.heartbeat,

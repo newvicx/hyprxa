@@ -1,7 +1,7 @@
 from datetime import datetime
 
 import anyio
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from motor.motor_asyncio import AsyncIOMotorCollection
 
 from hyprxa.auth import BaseUser
@@ -12,6 +12,7 @@ from hyprxa.dependencies.unitops import (
     get_unitops,
     validate_sources
 )
+from hyprxa.dependencies.unitops import map_subscriptions
 from hyprxa.unitops.models import UnitOp, UnitOpDocument, UnitOpQueryResult
 from hyprxa.util.status import Status, StatusOptions
 
@@ -22,9 +23,12 @@ router = APIRouter(prefix="/unitops", tags=["Unitops"])
 
 @router.get("/search/{unitop}", response_model=UnitOpDocument, dependencies=[Depends(can_read)])
 async def unitop(
-    document: UnitOpDocument = Depends(get_unitop)
+    document: UnitOpDocument = Depends(get_unitop),
+    map_subscriptions_: bool = Query(default=False, alias="mapSubscriptions")
 ) -> UnitOpDocument:
     """Retrieve a unitop record."""
+    if map_subscriptions_:
+        document = await map_subscriptions(unitop=document)
     return document
 
 
@@ -33,7 +37,7 @@ async def unitops(
     unitops: UnitOpQueryResult = Depends(get_unitops)
 ) -> UnitOpQueryResult:
     """Retrieve a collection of unitop records."""
-    return unitops
+    return unitops.dict()
 
 
 @router.post("/save", response_model=Status)

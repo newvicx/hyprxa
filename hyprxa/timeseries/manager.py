@@ -8,7 +8,9 @@ from typing import Any, Set
 
 import anyio
 from aiormq import Channel, Connection
+from fastapi import HTTPException, status
 from pamqp import commands
+from pydantic import ValidationError
 
 from hyprxa.base.manager import BaseManager
 from hyprxa.base.exceptions import SubscriptionLimitError
@@ -183,8 +185,6 @@ class TimeseriesManager(BaseManager):
             raise TimeseriesManagerClosed()
         if len(self.subscribers) >= self.max_subscribers:
             raise SubscriptionLimitError(f"Max subscriptions reached ({self.max_subscribers})")
-        
-        subscriptions = set(subscriptions)
 
         connection = await self.wait()
         

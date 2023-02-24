@@ -4,7 +4,11 @@ from typing import Any, Dict, List, Tuple
 
 from motor.motor_asyncio import AsyncIOMotorCollection
 
-from hyprxa.timeseries.models import AnySourceSubscriptionRequest
+from hyprxa.timeseries.models import (
+    AnySourceSubscription,
+    AnySourceSubscriptionRequest,
+    SubscriptionMessage
+)
 from hyprxa.types import TimeseriesRow
 from hyprxa.util.asyncutils import create_gather_task_group
 from hyprxa.util.time import (
@@ -76,8 +80,6 @@ async def get_timeseries(
     Args:
         collection: The motor collection.
         subscriptions: The subscriptions to stream data for.
-        database_name: The database to query.
-        collection_name: The collection to query.
         start_time: Start time of query. This is inclusive.
         end_time: End time of query. This is inclusive.
         scan_rate: A representative number of the data update frequency.
@@ -155,3 +157,47 @@ async def get_timeseries(
         # This works fine even if there are no samples (i.e index is empty list)
         for timestamp, row in iter_timeseries_rows(index, data):
             yield timestamp, row
+
+
+async def get_subscription_data(
+    collection: AsyncIOMotorCollection,
+    subscription: AnySourceSubscription,
+    start_time: datetime,
+    end_time: datetime | None = None,
+    limit: int | None = None
+) -> SubscriptionMessage:
+    """Retrieve timeseries data for a subscription in a time range.
+    
+    Args:
+        collection: The motor collection.
+        subscription: The subscription to get data for.
+        start_time: Start time of query. This is inclusive.
+        end_time: End time of query. This is inclusive.
+        scan_rate: A representative number of the data update frequency.
+
+    Yields:
+        row: A `TimeseriesRow`.
+
+    Raises:
+        ValueError: If 'start_time' >= 'end_time'.
+        PyMongoError: Error in motor client.
+    """
+    end_time = end_time or datetime.utcnow()
+    if start_time >= end_time:
+        raise ValueError("'start_time' cannot be greater than or equal to 'end_time'")
+
+    limit = limit or 5000
+
+    samples: List[Dict[str, datetime | Any]] = await collection.find(
+        filter={
+            "timestamp": {"$gte": start_time, "$lte": end_time},
+            "subscription": hash(subscription),
+            "source": subscription.source
+        },
+        projection={"timestamp": 1, "value": 1, "_id": 0}
+    ).sort("timestamp", 1).to_list(limit)
+
+    return SubscriptionMessage(
+        subscription=subscription,
+        items=[{"timestamp": sample["timestamp"], "value": sample["value"]} for sample in samples]
+    )

@@ -2,7 +2,7 @@ import logging
 from datetime import datetime
 from typing import List, Tuple
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from motor.motor_asyncio import AsyncIOMotorCollection
 from sse_starlette import EventSourceResponse
@@ -17,12 +17,12 @@ from hyprxa.dependencies.timeseries import (
     get_timeseries_collection,
     get_timeseries_manager
 )
-from hyprxa.dependencies.unitops import get_unitop
+from hyprxa.dependencies.unitops import map_subscriptions
 from hyprxa.dependencies.util import get_file_writer, parse_timestamp
 from hyprxa.timeseries.manager import TimeseriesManager
 from hyprxa.timeseries.models import AnySourceSubscriptionRequest, SubscriptionMessage
 from hyprxa.timeseries.sources import AvailableSources, _SOURCES
-from hyprxa.timeseries.stream import get_timeseries
+from hyprxa.timeseries.stream import get_subscription_data, get_timeseries
 from hyprxa.unitops.models import UnitOpDocument
 from hyprxa.util.filestream import FileWriter, chunked_transfer
 from hyprxa.util.formatting import format_timeseries_rows
@@ -74,7 +74,7 @@ async def stream_ws(
 
 @router.get("/{unitop}/recorded", response_class=StreamingResponse, dependencies=[Depends(can_read)])
 async def recorded(
-    unitop: UnitOpDocument = Depends(get_unitop),
+    unitop: UnitOpDocument = Depends(map_subscriptions),
     subscriptions: AnySourceSubscriptionRequest = Depends(get_subscriptions),
     start_time: datetime = Depends(
         parse_timestamp(
@@ -140,6 +140,45 @@ async def recorded(
     )
 
 
+@router.get("/{unitop}", response_model=SubscriptionMessage, dependencies=[Depends(can_read)])
+async def samples(
+    unitop: UnitOpDocument = Depends(map_subscriptions),
+    data_item: str = Query(alias="dataItem"),
+    start_time: datetime = Depends(
+        parse_timestamp(
+            query=Query(default=None, alias="startTime"),
+            default_timedelta=3600
+        )
+    ),
+    end_time: datetime = Depends(
+        parse_timestamp(
+            query=Query(default=None, alias="endTime")
+        )
+    ),
+    limit: int = Query(default=5000),
+    collection: AsyncIOMotorCollection = Depends(get_timeseries_collection)
+) -> SubscriptionMessage:
+    """Get timeseries data for a single subscription."""
+    if limit > 15_000:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Limit cannot be greater than 15000."
+        )
+    
+    if data_item not in list(unitop.data_mapping.keys()):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"'{data_item}' not in '{unitop.name}'."
+        )
+
+    subscription = unitop.data_mapping[data_item]
+    return await get_subscription_data(
+        collection=collection,
+        subscription=subscription,
+        start_time=start_time,
+        end_time=end_time
+    )
+
 @router.post(
     "/admin/manager/restart/{source}",
     response_model=Status,
@@ -153,6 +192,5 @@ async def reset_manager(
     """Close a timeseries manager. The next request requiring the source will
     start a new manager."""
     manager.close()
-    source = _SOURCES[source]
     get_timeseries_manager.invalidate(source)
     return Status(status=StatusOptions.OK)

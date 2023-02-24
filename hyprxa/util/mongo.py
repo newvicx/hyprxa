@@ -220,7 +220,7 @@ class SessionManager:
             self._count += 1
             try:
                 if self._client is None:
-                    client = await self._factory()
+                    client = self._factory()
                     self._client = client
                 
                 pong = await self._client.admin.command("ping")

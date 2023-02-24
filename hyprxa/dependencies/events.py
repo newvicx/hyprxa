@@ -4,11 +4,10 @@ from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorCollection
 
 from hyprxa.caching.singleton import singleton
 from hyprxa.dependencies.db import get_mongo_client
-from hyprxa.dependencies.topics import get_topic
+from hyprxa.dependencies.topics import find_topic, get_topics_collection
 from hyprxa.events.manager import EventManager
 from hyprxa.events.models import Event, EventDocument, ValidatedEventDocument
 from hyprxa.settings import EVENT_SETTINGS, EVENT_BUS_SETTINGS
-from hyprxa.topics.models import TopicDocument
 
 
 
@@ -60,9 +59,10 @@ async def get_event(
 
 async def validate_event(
     event: Event,
-    topic: TopicDocument = Depends(get_topic)
+    collection: AsyncIOMotorCollection = Depends(get_topics_collection)
 ) -> Event:
     """Validate an event payload against the topic schema."""
+    topic = await find_topic(topic=event.topic, _collection=collection)
     try:
         validate(event.payload, topic.jschema)
     except ValidationError as e:

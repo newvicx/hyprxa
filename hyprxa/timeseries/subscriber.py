@@ -19,9 +19,7 @@ class TimeseriesSubscriber(BaseSubscriber):
     async def __aiter__(self) -> AsyncIterable[str]:
         if self.stopped:
             return
-        ref: Dict[BaseSourceSubscription, datetime] = {
-            subscription: None for subscription in self._subscriptions
-        }
+        ref: Dict[BaseSourceSubscription, datetime] = {}
         while not self.stopped:
             if not self._data:
                 code = await self.wait()
@@ -40,7 +38,6 @@ class TimeseriesSubscriber(BaseSubscriber):
                     _LOGGER.warning("Validation failed for subscription message", extra={"raw": data})
                     continue
                 
-                assert msg.subscription in ref
                 last = ref.get(msg.subscription)
                 if last is None or last < msg.items[-1].timestamp:
                     yield msg.json()

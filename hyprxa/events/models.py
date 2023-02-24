@@ -13,7 +13,7 @@ from hyprxa.util.models import BaseModel, StorageHandlerInfo
 
 
 
-@dataclass(frozen=True)
+@dataclass
 class EventDocument:
     """MongoDB document model for an event."""
     topic: str

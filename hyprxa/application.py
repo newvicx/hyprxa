@@ -63,6 +63,7 @@ from hyprxa.routes import (
 )
 from hyprxa.settings import HYPRXA_SETTINGS, LOGGING_SETTINGS, SENTRY_SETTINGS
 from hyprxa.timeseries.base import BaseIntegration
+from hyprxa.timeseries.models import BaseSourceSubscription
 from hyprxa.timeseries.sources import add_source
 
 
@@ -74,6 +75,7 @@ _ADMIN_USER = BaseUser(
     email="admin@noreturn.com",
     upi=19961902,
     company="hyprxa",
+    country="US",
     scopes=set(
         itertools.chain(
             HYPRXA_SETTINGS.read_scopes,
@@ -211,6 +213,7 @@ class Hyprxa(FastAPI):
         self,
         source: str,
         integration: Callable[..., BaseIntegration],
+        subscription_model: Type[BaseSourceSubscription],
         scopes: Sequence[str] | None = None,
         any_: bool = False,
         raise_on_no_scopes: bool = False,
@@ -218,13 +221,14 @@ class Hyprxa(FastAPI):
         **client_kwargs: Any
     ) -> None:
         """Add a data source integration to the API."""
-        if scopes is not None:
-            for scope in scopes:
-                _ADMIN_USER.scopes.add(scope)
+        scopes = scopes or []
+        for scope in scopes:
+            _ADMIN_USER.scopes.add(scope)
 
         add_source(
             source=source,
             integration=integration,
+            subscription_model=subscription_model,
             scopes=scopes,
             any_=any_,
             raise_on_no_scopes=raise_on_no_scopes,
@@ -295,7 +299,7 @@ class Hyprxa(FastAPI):
             app = cls(app=app, **options)
         return app
 
-    def add_admin_scopes(scopes: Sequence[str] | None) -> None:
+    def add_admin_scopes(self, scopes: Sequence[str] | None) -> None:
         """Add scopes to the ADMIN user profile."""
         if scopes:
             for scope in scopes:

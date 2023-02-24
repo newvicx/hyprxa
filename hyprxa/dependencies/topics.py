@@ -19,12 +19,22 @@ async def get_topics_collection(
     return client[TOPIC_SETTINGS.database_name][TOPIC_SETTINGS.collection_name]
 
 
-@memo
 async def get_topic(
     topic: str,
     _collection: AsyncIOMotorCollection = Depends(get_topics_collection)
 ) -> TopicDocument:
     """Search for a topic by name."""
+    return await find_topic(
+        topic=topic,
+        _collection=_collection
+    )
+
+
+@memo
+async def find_topic(
+    topic: str,
+    _collection: AsyncIOMotorCollection = Depends(get_topics_collection)
+) -> TopicDocument:
     document = await _collection.find_one({"topic": topic}, projection={"_id": 0})
     if document:
         return ValidatedTopicDocument(**document)
