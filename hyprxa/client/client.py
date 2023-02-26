@@ -5,7 +5,7 @@ import logging
 import os
 import pathlib
 import tempfile
-from collections.abc import AsyncIterable, Iterable, Mapping
+from collections.abc import AsyncIterable, Iterable, Mapping, Sequence
 from contextlib import AsyncExitStack, ExitStack
 from datetime import datetime
 from typing import Any, Callable, Dict, TextIO
@@ -25,7 +25,7 @@ from pydantic import BaseModel
 from hyprxa.auth.models import BaseUser
 from hyprxa.dependencies.info import Info
 from hyprxa.client.base import HyprxaHttpxAsyncClient, HyprxaHttpxClient
-from hyprxa.events.models import Event, EventDocument
+from hyprxa.events.models import Event, EventDocument, EventQueryResult
 from hyprxa.timeseries.models import SubscriptionMessage
 from hyprxa.timeseries.sources import AvailableSources
 from hyprxa.topics.models import Topic, TopicDocument, TopicQueryResult
@@ -126,8 +126,13 @@ class HyprxaClient:
     
     def get_event(self, topic: str, routing_key: str | None = None) -> EventDocument:
         """Send a GET request to /events/{topic}/last."""
-        params = QueryParams(routing_key=routing_key)
-        return self._get(f"/events/{topic}/last", EventDocument, params=params)
+        params = QueryParams(routingKey=routing_key)
+        return self._get(f"/events/{topic}/last", EventDocument, params)
+
+    def query_events(self, topic: str, routing_key: str) -> EventQueryResult:
+        """Send a GET request to /events/{topic}/query."""
+        params = QueryParams(routingKey=routing_key)
+        return self._get(f"/events/{topic}/query", EventQueryResult, params)
     
     def stream_events(
         self,
@@ -135,7 +140,7 @@ class HyprxaClient:
         routing_key: str | None = None
     ) -> Iterable[EventDocument]:
         """Send a GET request to /events/stream/{topic} and stream events."""
-        params = QueryParams(routing_key=routing_key)
+        params = QueryParams(routingKey=routing_key)
         path = f"/events/stream/{topic}"
         for data in self._sse("GET", path, params):
             yield EventDocument(**data)
@@ -157,7 +162,7 @@ class HyprxaClient:
         params=QueryParams(
             start_time=start_time,
             end_time=end_time,
-            routing_key=routing_key,
+            routingKey=routing_key,
             timezone=timezone
         )
         self._download(
@@ -195,10 +200,17 @@ class HyprxaClient:
         params = QueryParams(q=q, mapSubscriptions=map_subscriptions)
         return self._get("/timeseries/unitop/search", UnitOpQueryResult, params=params)
     
-    def stream_data(self, unitop: str) -> Iterable[SubscriptionMessage]:
+    def stream_data(
+        self,
+        unitop: str,
+        data_items: Sequence[str] | None = None
+    ) -> Iterable[SubscriptionMessage]:
         """Send a GET request to /timeseries/stream/{unitop} and stream data."""
+        params = None
+        if data_items:
+            params = QueryParams(dataItem="&dataItem=".join(data_items))
         path = f"/timeseries/stream/{unitop}"
-        for data in self._sse("GET", path):
+        for data in self._sse("GET", path, params):
             yield SubscriptionMessage.parse_obj(data)
 
     def get_data(
@@ -224,6 +236,7 @@ class HyprxaClient:
         self,
         unitop: str,
         destination: os.PathLike | TextIO | tempfile._TemporaryFileWrapper = None,
+        data_items: Sequence[str] | None = None,
         start_time: datetime | None = None,
         end_time: datetime | None = None,
         timezone: str | None = None,
@@ -240,6 +253,8 @@ class HyprxaClient:
             timezone=timezone,
             scan_rate=scan_rate
         )
+        if data_items:
+            params.add("dataItem", "&dataItem=".join(data_items))
         self._download(
             method="GET",
             path=path,
@@ -515,8 +530,13 @@ class HyprxaAsyncClient:
     
     async def get_event(self, topic: str, routing_key: str | None = None) -> EventDocument:
         """Send a GET request to /events/{topic}/last."""
-        params = QueryParams(routing_key=routing_key)
+        params = QueryParams(routingKey=routing_key)
         return await self._get(f"/events/{topic}/last", EventDocument, params=params)
+
+    async def query_events(self, topic: str, routing_key: str) -> EventQueryResult:
+        """Send a GET request to /events/{topic}/query."""
+        params = QueryParams(routingKey=routing_key)
+        return await self._get(f"/events/{topic}/query", EventQueryResult, params)
     
     async def stream_events(
         self,
@@ -524,7 +544,7 @@ class HyprxaAsyncClient:
         routing_key: str | None = None
     ) -> AsyncIterable[EventDocument]:
         """Send a GET request to /events/stream/{topic} and stream events."""
-        params = QueryParams(routing_key=routing_key)
+        params = QueryParams(routingKey=routing_key)
         path = f"/events/stream/{topic}"
         async for data in self._sse("GET", path, params):
             yield EventDocument(**data)
@@ -546,7 +566,7 @@ class HyprxaAsyncClient:
         params=QueryParams(
             start_time=start_time,
             end_time=end_time,
-            routing_key=routing_key,
+            routingKey=routing_key,
             timezone=timezone
         )
         await self._download(
@@ -584,8 +604,15 @@ class HyprxaAsyncClient:
         params = QueryParams(q=q, mapSubscriptions=map_subscriptions)
         return await self._get("/timeseries/unitop/search", UnitOpQueryResult, params=params)
     
-    async def stream_data(self, unitop: str) -> AsyncIterable[SubscriptionMessage]:
+    async def stream_data(
+        self,
+        unitop: str,
+        data_items: Sequence[str] | None = None
+    ) -> AsyncIterable[SubscriptionMessage]:
         """Send a GET request to /timeseries/stream/{unitop} and stream data."""
+        params = None
+        if data_items:
+            params = QueryParams(dataItem="&dataItem=".join(data_items))
         path = f"/timeseries/stream/{unitop}"
         async for data in self._sse("GET", path):
             yield SubscriptionMessage.parse_obj(data)
@@ -613,6 +640,7 @@ class HyprxaAsyncClient:
         self,
         unitop: str,
         destination: os.PathLike | TextIO | tempfile._TemporaryFileWrapper = None,
+        data_items: Sequence[str] | None = None,
         start_time: datetime | None = None,
         end_time: datetime | None = None,
         timezone: str | None = None,
@@ -629,6 +657,8 @@ class HyprxaAsyncClient:
             timezone=timezone,
             scan_rate=scan_rate
         )
+        if data_items:
+            params.add("dataItem", "&dataItem=".join(data_items))
         await self._download(
             method="GET",
             path=path,
