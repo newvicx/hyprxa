@@ -120,5 +120,11 @@ async def map_subscriptions(
     source_mapping = {source.source: source.subscription_model for source in _SOURCES}
     for data_item, subscription in unitop.data_mapping.copy().items():
         subscription_model = source_mapping.get(subscription.source)
+        if subscription_model is None:
+            raise HTTPException(
+                status_code=status.HTTP_501_NOT_IMPLEMENTED,
+                detail=f"'{subscription.source}' is a required source for this "
+                "unitop but the source is not configured for this application."
+            )
         unitop.data_mapping.update({data_item: subscription_model.parse_obj(subscription)})
     return unitop

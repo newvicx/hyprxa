@@ -34,10 +34,10 @@ async def unitop(
 
 @router.get("/search", response_model=UnitOpQueryResult, dependencies=[Depends(can_read)])
 async def unitops(
-    unitops: UnitOpQueryResult = Depends(get_unitops)
+    documents: UnitOpQueryResult = Depends(get_unitops)
 ) -> UnitOpQueryResult:
     """Retrieve a collection of unitop records."""
-    return unitops.dict()
+    return documents.dict()
 
 
 @router.post("/save", response_model=Status)

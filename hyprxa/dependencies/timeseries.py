@@ -1,6 +1,6 @@
 from typing import Dict, List
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Query, status
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorCollection
 from starlette.requests import HTTPConnection
 
@@ -38,13 +38,22 @@ async def get_timeseries_collection(
 
 async def get_subscriptions(
     connection: HTTPConnection,
-    unitop: UnitOpDocument = Depends(map_subscriptions)
+    unitop: UnitOpDocument = Depends(map_subscriptions),
+    data_items: List[str] = Query(default=None, alias="dataItem")
 ) -> AnySourceSubscriptionRequest:
     """Extract subscriptions from unitop and authorize all sources."""
-    subscriptions = AnySourceSubscriptionRequest(
-        subscriptions=[subscription for subscription in unitop.data_mapping.values()]
-    )
-
+    data_items = set(data_items or list(unitop.data_mapping.keys()))
+    
+    subscriptions=[
+        unitop.data_mapping[data_item] for data_item in data_items if data_item in unitop.data_mapping
+    ]
+    if not subscriptions:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No subscriptions matching criteria."
+        )
+    
+    subscriptions = AnySourceSubscriptionRequest(subscriptions=subscriptions)
     groups = subscriptions.group()
     for source_ in groups.keys():
         if source_ not in _SOURCES:

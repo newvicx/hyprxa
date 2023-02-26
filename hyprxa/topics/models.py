@@ -8,7 +8,7 @@ from jsonschema.validators import validator_for
 from pydantic import Field, root_validator, validator
 
 from hyprxa.base import BaseSubscription
-from hyprxa.util.events import set_routing_key
+from hyprxa.util.events import get_routing_key
 from hyprxa.util.models import BaseModel
 
 
@@ -52,4 +52,7 @@ class TopicSubscription(BaseSubscription):
     
     @root_validator
     def _set_routing_key(cls, v: Dict[str, str | None]) -> Dict[str, str]:
-        return set_routing_key(v)
+        topic = v.get("topic")
+        routing_key = v.get("routing_key")
+        v["routing_key"] = get_routing_key(topic=topic, routing_key=routing_key)
+        return v
