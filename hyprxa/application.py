@@ -93,6 +93,8 @@ class Hyprxa(FastAPI):
         debug: bool = False,
         interactive_auth: bool = False,
         token_path: str = "/token",
+        include_event_hub: bool = True,
+        include_timeseries: bool = True,
         auth_client: Optional[Callable[[], AuthenticationClient]] = None,
         auth_backend: Optional[Type[BaseAuthenticationBackend]] = None,
         routes: Optional[List[BaseRoute]] = None,
@@ -182,11 +184,15 @@ class Hyprxa(FastAPI):
         self.auth_backend = auth_backend
 
         self.include_router(admin_router)
-        self.include_router(events_router)
-        self.include_router(timeseries_router)
-        self.include_router(topics_router)
-        self.include_router(unitops_router)
         self.include_router(users_router)
+
+        if include_event_hub:
+            self.include_router(events_router)
+            self.include_router(topics_router)
+
+        if include_timeseries:
+            self.include_router(timeseries_router)
+            self.include_router(unitops_router)
 
         self.add_exception_handler(CacheError, handle_CacheError)
         self.add_exception_handler(DatabaseUnavailable, handle_DatabaseUnavailable)
