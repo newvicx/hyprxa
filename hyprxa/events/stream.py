@@ -1,3 +1,4 @@
+import re
 import json
 from collections.abc import AsyncIterable
 from datetime import datetime
@@ -24,7 +25,7 @@ async def get_events(
         topic: The event topic to search.
         start_time: Start time of query. This is inclusive.
         end_time: End time of query. This is inclusive.
-        routing_key: The routing key for events to query.
+        routing_key: The routing key pattern for events to query.
 
     Yields:
         row: An event row.
@@ -39,7 +40,8 @@ async def get_events(
 
     query = {"topic": topic, "timestamp": {"$gte": start_time, "$lte": end_time}}
     if routing_key:
-        query.update({"events.routing_key": routing_key})
+        regex = re.compile(routing_key, re.IGNORECASE)
+        query.update({"routing_key": {"$regex": regex}})
     
     async for events in collection.find(
         query,
@@ -49,8 +51,6 @@ async def get_events(
             documents: List[EventDocument] = [
                 ValidatedEventDocument(**event) for event in events["events"]
             ]
-            if routing_key:
-                documents = [document for document in documents if document.routing_key == routing_key]
             if documents:
                 index = sorted([(document.timestamp, i) for i, document in enumerate(documents)])
                 for timestamp, i in index:

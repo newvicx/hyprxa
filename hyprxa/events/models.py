@@ -4,11 +4,9 @@ from typing import Any, Dict, List, Tuple
 
 import orjson
 import pydantic
-from pydantic import root_validator
 
 from hyprxa.base.models import ManagerInfo
 from hyprxa.util.context import get_user_identity
-from hyprxa.util.events import set_routing_key
 from hyprxa.util.models import BaseModel, StorageHandlerInfo
 
 
@@ -45,12 +43,8 @@ class EventDocument:
 class Event(BaseModel):
     """An event to publish."""
     topic: str
-    routing_key: str | None
+    routing_key: str
     payload: Dict[str, Any]
-
-    @root_validator
-    def _set_routing_key(cls, v: Dict[str, str | None]) -> Dict[str, str]:
-        return set_routing_key(v)
 
     def to_document(self) -> EventDocument:
         return EventDocument(

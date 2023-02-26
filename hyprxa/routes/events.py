@@ -14,12 +14,13 @@ from hyprxa.dependencies.events import (
     get_event,
     get_event_collection,
     get_event_manager,
+    match_events,
     validate_event
 )
 from hyprxa.dependencies.topics import get_topic
 from hyprxa.dependencies.util import get_file_writer, parse_timestamp
 from hyprxa.events.manager import EventManager
-from hyprxa.events.models import Event, EventDocument
+from hyprxa.events.models import Event, EventDocument, EventQueryResult
 from hyprxa.events.stream import get_events
 from hyprxa.topics.models import (
     TopicDocument,
@@ -57,6 +58,7 @@ async def stream(
     """Subscribe to a topic and stream events. This is an event sourcing (SSE)
     endpoint.
     """
+    routing_key = routing_key.replace("$", "#")
     subscriptions = [TopicSubscription(topic=topic.topic, routing_key=routing_key)]
     subscriber = await manager.subscribe(subscriptions=subscriptions)
     send = iter_subscriber(subscriber)
@@ -91,10 +93,20 @@ async def event(document: EventDocument = Depends(get_event)) -> EventDocument:
     return document
 
 
+@router.get("/{topic}/query", response_model=EventQueryResult, dependencies=[Depends(can_read)])
+async def query(
+    documents: EventQueryResult = Depends(match_events)
+) -> EventQueryResult:
+    """Return the last posted event for a topic where all routing keys match
+    the pattern.
+    """
+    return documents.dict()
+
+
 @router.get("/{topic}/recorded", response_class=StreamingResponse, dependencies=[Depends(can_read)])
 async def recorded(
     topic: str,
-    routing_key: str | None = None,
+    routing_key: str | None = Query(default=None, alias="routingKey"),
     start_time: datetime = Depends(
         parse_timestamp(
             query=Query(default=None, alias="startTime"),

@@ -60,7 +60,7 @@ class EventWorker(MongoWorker):
                 for _ in range(len(self._pending_documents)):
                     document: EventDocument = self._pending_documents.pop(0)
                     collection.update_one(
-                        filter={"topic": document.topic, "count": {"$lt": 1000}},
+                        filter={"topic": document.topic, "routing_key": document.routing_key, "count": {"$lt": 1000}},
                         update={
                             "$push": {
                                 "events": asdict(document)
