@@ -211,7 +211,6 @@ class MemoAPI:
         value of a memoized function must be pickleable.
         
         Each caller of a memoized function gets its own copy of the cached data.
-        You can clear a memoized function's cache with f.clear().
 
         This decorator works with both sync and async functions.
         
