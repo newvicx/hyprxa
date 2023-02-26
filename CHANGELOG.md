@@ -44,3 +44,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Major bug fixes across the board
 - Additional admin endpoints for logs
 - Get timeseries data for a single data item in a unitop
+
+## 0.0.7 (26th Feb, 2023)
+
+- Additional queries for events. You can now query for events based on a routing key pattern and hyprxa will return the most recent event for each routing key matching the pattern
+- Optionally stream a subset of data items for a unitop. Before, when streaming a unitop, all data items would be subscribed to and all. You can now optionally select only a subset to stream
+- Optionally download timeseries data for a subset of data items from a unitop. Similar to streaming, you can donwload a subset of data items for a unitop
+- You can choose whether to include timeseries/unitop or event/topic routes when declaring a hyprxa application
+- Schema updates to events collection to support additional queries
