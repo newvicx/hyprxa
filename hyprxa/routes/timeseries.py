@@ -103,14 +103,14 @@ async def recorded(
     buffer, writer, suffix, media_type = (
         file_writer.buffer, file_writer.writer, file_writer.suffix, file_writer.media_type
     )
-
+    
     groups = subscriptions.group()
     subscriptions: List[Tuple[int, str]] = []
     for source in groups:
         for subscription in groups[source]:
             subscriptions.append((hash(subscription), source))
     hashes = sorted(subscriptions)
-
+    print(len(hashes), len(unitop.data_mapping))
     headers = []
     for hash_, source in hashes:
         for name, subscription in unitop.data_mapping.items():
@@ -155,10 +155,11 @@ async def samples(
             query=Query(default=None, alias="endTime")
         )
     ),
-    limit: int = Query(default=5000),
+    limit: int | None = None,
     collection: AsyncIOMotorCollection = Depends(get_timeseries_collection)
 ) -> SubscriptionMessage:
     """Get timeseries data for a single subscription."""
+    limit = limit or 5000
     if limit > 15_000:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

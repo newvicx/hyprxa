@@ -66,7 +66,7 @@ class MongoWorker:
         self._pending_size: int = 0
         self._retries = 0
 
-        atexit.register(self.stop)
+        atexit.register(self.stop, timeout=10)
 
     @property
     def info(self) -> Dict[str, Any]:
@@ -107,13 +107,14 @@ class MongoWorker:
                     "The log worker cannot be started after stopping."
                 )
 
-    def stop(self) -> None:
+    def stop(self, timeout: float = None) -> None:
         """Flush all documents and stop the background thread."""
         with self._lock:
+            print(self.__class__.__name__, "stop called")
             if self._started:
                 self._flush_event.set()
                 self._stop_event.set()
-                self._runner.join()
+                self._runner.join(timeout=timeout)
                 self._started = False
                 self._stopped = True
 

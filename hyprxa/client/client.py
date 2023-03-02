@@ -208,7 +208,8 @@ class HyprxaClient:
         """Send a GET request to /timeseries/stream/{unitop} and stream data."""
         params = None
         if data_items:
-            params = QueryParams(dataItem="&dataItem=".join(data_items))
+            params = QueryParams(dataItem=data_items)
+
         path = f"/timeseries/stream/{unitop}"
         for data in self._sse("GET", path, params):
             yield SubscriptionMessage.parse_obj(data)
@@ -220,7 +221,7 @@ class HyprxaClient:
         start_time: datetime | None = None,
         end_time: datetime | None = None,
         timezone: str | None = None,
-        limit: int | None = None
+        limit: int | None = 5000
     ) -> SubscriptionMessage:
         """Send a GET request to /timeseries/{unitop}"""
         params = QueryParams(
@@ -612,9 +613,10 @@ class HyprxaAsyncClient:
         """Send a GET request to /timeseries/stream/{unitop} and stream data."""
         params = None
         if data_items:
-            params = QueryParams(dataItem="&dataItem=".join(data_items))
+            params = QueryParams(dataItem=data_items)
+
         path = f"/timeseries/stream/{unitop}"
-        async for data in self._sse("GET", path):
+        async for data in self._sse("GET", path, params):
             yield SubscriptionMessage.parse_obj(data)
 
     async def get_data(
@@ -624,7 +626,7 @@ class HyprxaAsyncClient:
         start_time: datetime | None = None,
         end_time: datetime | None = None,
         timezone: str | None = None,
-        limit: int | None = None
+        limit: int | None = 5000
     ) -> SubscriptionMessage:
         """Send a GET request to /timeseries/{unitop}"""
         params = QueryParams(

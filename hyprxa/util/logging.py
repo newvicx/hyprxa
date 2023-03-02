@@ -103,24 +103,12 @@ def record_error_stack_trace(record: logging.LogRecord) -> List[str] | None:
 
 
 def json_dumps(value: Dict[str, Any]) -> str:
-    # Ensure that the first three fields are 'timestamp',
-    # 'log.level', and 'message'
+    # Ensure that the first 2 fields are 'timestamp' and 'message'
     ordered_fields = []
     try:
         ordered_fields.append(("timestamp", value.pop("timestamp")))
     except KeyError:
         pass
-
-    # log.level can either be nested or not nested so we have to try both
-    try:
-        ordered_fields.append(("log.level", value["log"].pop("level")))
-        if not value["log"]:  # Remove the 'log' dictionary if it's now empty
-            value.pop("log", None)
-    except KeyError:
-        try:
-            ordered_fields.append(("log.level", value.pop("log.level")))
-        except KeyError:
-            pass
 
     json_dumps = functools.partial(
         json.dumps, sort_keys=True, separators=(",", ":"), default=json_dumps_fallback

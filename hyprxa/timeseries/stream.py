@@ -167,6 +167,8 @@ async def get_subscription_data(
     limit: int | None = None
 ) -> SubscriptionMessage:
     """Retrieve timeseries data for a subscription in a time range.
+
+    This retrieves the most recent samples in the time range up to the limit.
     
     Args:
         collection: The motor collection.
@@ -195,9 +197,9 @@ async def get_subscription_data(
             "source": subscription.source
         },
         projection={"timestamp": 1, "value": 1, "_id": 0}
-    ).sort("timestamp", 1).to_list(limit)
+    ).sort("timestamp", -1).to_list(limit)
 
     return SubscriptionMessage(
         subscription=subscription,
-        items=[{"timestamp": sample["timestamp"], "value": sample["value"]} for sample in samples]
+        items=[{"timestamp": sample["timestamp"], "value": sample["value"]} for sample in reversed(samples)]
     )
