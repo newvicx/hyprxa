@@ -43,10 +43,10 @@ async def get_subscriptions(
 ) -> AnySourceSubscriptionRequest:
     """Extract subscriptions from unitop and authorize all sources."""
     data_items = set(data_items or list(unitop.data_mapping.keys()))
-    
     subscriptions=[
         unitop.data_mapping[data_item] for data_item in data_items if data_item in unitop.data_mapping
     ]
+    
     if not subscriptions:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

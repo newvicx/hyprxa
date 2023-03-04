@@ -26,7 +26,6 @@ class BaseSourceSubscriptionRequest(BaseModel):
         cls,
         subscriptions: Sequence[BaseSourceSubscription]
     ) -> List[BaseSourceSubscription]:
-        subscriptions = set(subscriptions)
         return sorted(subscriptions)
 
 

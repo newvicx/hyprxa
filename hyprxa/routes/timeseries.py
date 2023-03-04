@@ -110,13 +110,14 @@ async def recorded(
         for subscription in groups[source]:
             subscriptions.append((hash(subscription), source))
     hashes = sorted(subscriptions)
-    print(len(hashes), len(unitop.data_mapping))
+
     headers = []
     for hash_, source in hashes:
-        for name, subscription in unitop.data_mapping.items():
+        for name, subscription in unitop.data_mapping.copy().items():
             if hash(subscription) == hash_ and subscription.source == source:
                 headers.append(name)
-
+                unitop.data_mapping.pop(name)
+                break
     assert len(headers) == len(hashes)
 
     chunk_size = min(int(100_0000/len(headers)), 5000)

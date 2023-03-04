@@ -188,6 +188,7 @@ class TimeseriesManager(BaseManager):
 
         connection = await self.wait()
         
+        subscriptions = set(subscriptions)
         await self._lock.register(subscriptions)
         await self._subscribe(subscriptions)
 

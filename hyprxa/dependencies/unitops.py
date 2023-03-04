@@ -86,7 +86,8 @@ async def get_unitops(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid query.")
     if documents:
         if map_subscriptions_:
-            documents = [await map_subscriptions(unitop=document) for document in documents]
+            documents = [await map_subscriptions(unitop=UnitOpDocument(**document)) for document in documents]
+            return UnitOpQueryResult(items=[document for document in documents])
         return UnitOpQueryResult(items=[UnitOpDocument(**document) for document in documents])
     return UnitOpQueryResult()
 

@@ -110,7 +110,6 @@ class MongoWorker:
     def stop(self, timeout: float = None) -> None:
         """Flush all documents and stop the background thread."""
         with self._lock:
-            print(self.__class__.__name__, "stop called")
             if self._started:
                 self._flush_event.set()
                 self._stop_event.set()
