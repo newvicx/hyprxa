@@ -110,7 +110,7 @@ async def recorded(
         for subscription in groups[source]:
             subscriptions.append((hash(subscription), source))
     hashes = sorted(subscriptions)
-    print(len(hashes), len(unitop.data_mapping))
+    
     headers = []
     for hash_, source in hashes:
         for name, subscription in unitop.data_mapping.items():
@@ -121,10 +121,7 @@ async def recorded(
 
     chunk_size = min(int(100_0000/len(headers)), 5000)
     writer(["timestamp", *headers])
-    filename = (
-        f"{start_time.strftime('%Y%m%d%H%M%S')}-"
-        f"{end_time.strftime('%Y%m%d%H%M%S')}-events.{suffix}"
-    )
+    filename = f"{int(datetime.utcnow().timestamp()*1_000_000)}{suffix}"
 
     return StreamingResponse(
         chunked_transfer(

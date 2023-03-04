@@ -177,8 +177,8 @@ async def get_subscription_data(
         end_time: End time of query. This is inclusive.
         scan_rate: A representative number of the data update frequency.
 
-    Yields:
-        row: A `TimeseriesRow`.
+    Returns:
+        message: A `SubscriptionMessage`.
 
     Raises:
         ValueError: If 'start_time' >= 'end_time'.

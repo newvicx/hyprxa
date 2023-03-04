@@ -1,4 +1,5 @@
 import itertools
+import pathlib
 from collections.abc import Coroutine, Sequence
 from typing import (
     Any,
@@ -13,10 +14,17 @@ from typing import (
 from fastapi import Depends, FastAPI, Request, Response, routing
 from fastapi.datastructures import Default
 from fastapi.middleware import Middleware
+from fastapi.middleware.asyncexitstack import AsyncExitStackMiddleware
+from fastapi.openapi.docs import (
+    get_redoc_html,
+    get_swagger_ui_html,
+    get_swagger_ui_oauth2_redirect_html
+)
+from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.utils import generate_unique_id
 from pymongo.errors import PyMongoError
 from starlette.authentication import AuthenticationBackend
-from fastapi.middleware.asyncexitstack import AsyncExitStackMiddleware
 from starlette.middleware.authentication import AuthenticationMiddleware
 from starlette.middleware.errors import ServerErrorMiddleware
 from starlette.middleware.exceptions import ExceptionMiddleware
@@ -73,7 +81,7 @@ _ADMIN_USER = BaseUser(
     first_name="admin",
     last_name="admin",
     email="admin@noreturn.com",
-    upi=19961902,
+    upi=19960219,
     company="hyprxa",
     country="US",
     scopes=set(
@@ -84,6 +92,12 @@ _ADMIN_USER = BaseUser(
         )
     )
 )
+_ROOT_DIR = pathlib.Path(__file__).absolute().parent
+
+
+async def favicon() -> FileResponse:
+    filepath = _ROOT_DIR.joinpath("./static/favicon.png")
+    return FileResponse(path=filepath)
 
 
 class Hyprxa(FastAPI):
@@ -146,7 +160,7 @@ class Hyprxa(FastAPI):
         dependencies = dependencies or []
         if interactive_auth:
             dependencies.append(Depends(enable_interactive_auth(token_path)))
-        
+
         super().__init__(
             debug=debug,
             routes=routes,
@@ -208,7 +222,13 @@ class Hyprxa(FastAPI):
             self.add_api_route(token_path, debug_token, response_model=Token, tags=["Token"], methods=["POST"])
         else:
             self.add_api_route(token_path, token, response_model=Token, tags=["Token"], methods=["POST"])
-
+        
+        self.add_api_route("/favicon.ico", favicon, response_class=FileResponse, methods=["GET"], include_in_schema=False)
+        self.mount(
+            "/static",
+            StaticFiles(directory=_ROOT_DIR.joinpath("./static")),
+            name="static",
+        )
         self._authentication_middleware: Middleware = None
 
     @property
@@ -304,6 +324,63 @@ class Hyprxa(FastAPI):
         for cls, options in reversed(middleware):
             app = cls(app=app, **options)
         return app
+    
+    def setup(self) -> None:
+        # Same setup as FastAPI just overrides the favicon URL and alters
+        # the browser tab title
+        if self.openapi_url:
+            urls = (server_data.get("url") for server_data in self.servers)
+            server_urls = {url for url in urls if url}
+
+            async def openapi(req: Request) -> JSONResponse:
+                root_path = req.scope.get("root_path", "").rstrip("/")
+                if root_path not in server_urls:
+                    if root_path and self.root_path_in_servers:
+                        self.servers.insert(0, {"url": root_path})
+                        server_urls.add(root_path)
+                return JSONResponse(self.openapi())
+
+            self.add_route(self.openapi_url, openapi, include_in_schema=False)
+        if self.openapi_url and self.docs_url:
+
+            async def swagger_ui_html(req: Request) -> HTMLResponse:
+                root_path = req.scope.get("root_path", "").rstrip("/")
+                openapi_url = root_path + self.openapi_url
+                oauth2_redirect_url = self.swagger_ui_oauth2_redirect_url
+                if oauth2_redirect_url:
+                    oauth2_redirect_url = root_path + oauth2_redirect_url
+                return get_swagger_ui_html(
+                    openapi_url=openapi_url,
+                    title=self.title + " - OpenAPI",
+                    swagger_favicon_url="/static/favicon.png",
+                    oauth2_redirect_url=oauth2_redirect_url,
+                    init_oauth=self.swagger_ui_init_oauth,
+                    swagger_ui_parameters=self.swagger_ui_parameters,
+                )
+
+            self.add_route(self.docs_url, swagger_ui_html, include_in_schema=False)
+
+            if self.swagger_ui_oauth2_redirect_url:
+
+                async def swagger_ui_redirect(req: Request) -> HTMLResponse:
+                    return get_swagger_ui_oauth2_redirect_html()
+
+                self.add_route(
+                    self.swagger_ui_oauth2_redirect_url,
+                    swagger_ui_redirect,
+                    include_in_schema=False,
+                )
+        if self.openapi_url and self.redoc_url:
+
+            async def redoc_html(req: Request) -> HTMLResponse:
+                root_path = req.scope.get("root_path", "").rstrip("/")
+                openapi_url = root_path + self.openapi_url
+                return get_redoc_html(
+                    openapi_url=openapi_url, title=self.title + " - OpenAPI",
+                    redoc_favicon_url="/static/favicon.png"
+                )
+
+            self.add_route(self.redoc_url, redoc_html, include_in_schema=False)
 
     def add_admin_scopes(self, scopes: Sequence[str] | None) -> None:
         """Add scopes to the ADMIN user profile."""
