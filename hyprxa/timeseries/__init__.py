@@ -31,7 +31,8 @@ from .models import (
     TimeseriesDocument,
     TimeseriesManagerInfo,
     TimeseriesSamples,
-    TimestampedValue
+    TimestampedValue,
+    UnitopSubscriptionRequest
 )
 from .sources import Source, add_source
 from .stream import get_timeseries
@@ -71,6 +72,7 @@ __all__ = [
     "TimeseriesManagerInfo",
     "TimeseriesSamples",
     "TimestampedValue",
+    "UnitopSubscriptionRequest",
     "Source",
     "add_source",
     "get_timeseries",

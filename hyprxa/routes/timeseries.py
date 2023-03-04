@@ -10,7 +10,9 @@ from starlette.websockets import WebSocket
 
 from hyprxa.auth import BaseUser
 from hyprxa.base import BaseSubscriber, iter_subscribers
+from hyprxa.caching.token import ReferenceToken
 from hyprxa.dependencies.auth import can_read, is_admin
+from hyprxa.dependencies.caching import get_reference_token
 from hyprxa.dependencies.timeseries import (
     get_subscribers,
     get_subscriptions,
@@ -20,7 +22,11 @@ from hyprxa.dependencies.timeseries import (
 from hyprxa.dependencies.unitops import map_subscriptions
 from hyprxa.dependencies.util import get_file_writer, parse_timestamp
 from hyprxa.timeseries.manager import TimeseriesManager
-from hyprxa.timeseries.models import AnySourceSubscriptionRequest, SubscriptionMessage
+from hyprxa.timeseries.models import (
+    AnySourceSubscriptionRequest,
+    SubscriptionMessage,
+    UnitopSubscriptionRequest
+)
 from hyprxa.timeseries.sources import AvailableSources, _SOURCES
 from hyprxa.timeseries.stream import get_subscription_data, get_timeseries
 from hyprxa.unitops.models import UnitOpDocument
@@ -43,7 +49,15 @@ async def sources() -> AvailableSources:
     return {"sources": [source.source for source in _SOURCES]}
 
 
-@router.get("/stream/{unitop}", response_model=SubscriptionMessage, dependencies=[Depends(can_read)])
+@router.post("/{unitop}/subscribe", response_model=ReferenceToken)
+async def subscribe(
+    token: ReferenceToken = Depends(get_reference_token(UnitopSubscriptionRequest))
+) -> ReferenceToken:
+    """Retrieve a reference token for a subset of data items from a unitop."""
+    return token
+
+
+@router.get("/{unitop}/stream", response_model=SubscriptionMessage, dependencies=[Depends(can_read)])
 async def stream(
     subscribers: List[BaseSubscriber] = Depends(get_subscribers)
 ) -> SubscriptionMessage:
@@ -55,7 +69,7 @@ async def stream(
     return EventSourceResponse(iterble)
 
 
-@router.websocket("/stream/{unitop}/ws")
+@router.websocket("/{unitop}/ws")
 async def stream_ws(
     websocket: WebSocket,
     _: BaseUser = Depends(can_read),
@@ -138,7 +152,7 @@ async def recorded(
     )
 
 
-@router.get("/{unitop}", response_model=SubscriptionMessage, dependencies=[Depends(can_read)])
+@router.get("/{unitop}/samples", response_model=SubscriptionMessage, dependencies=[Depends(can_read)])
 async def samples(
     unitop: UnitOpDocument = Depends(map_subscriptions),
     data_item: str = Query(alias="dataItem"),

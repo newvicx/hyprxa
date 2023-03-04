@@ -6,6 +6,7 @@ from starlette.requests import HTTPConnection
 
 from hyprxa.base.subscriber import BaseSubscriber
 from hyprxa.caching.singleton import singleton
+from hyprxa.dependencies.caching import get_cached_reference
 from hyprxa.dependencies.db import get_mongo_client
 from hyprxa.dependencies.unitops import map_subscriptions
 from hyprxa.settings import TIMESERIES_SETTINGS, TIMESERIES_MANAGER_SETTINGS
@@ -39,9 +40,14 @@ async def get_timeseries_collection(
 async def get_subscriptions(
     connection: HTTPConnection,
     unitop: UnitOpDocument = Depends(map_subscriptions),
-    data_items: List[str] = Query(default=None, alias="dataItem")
+    data_items: List[str] | None = Query(default=None, alias="dataItem"),
+    cached_data_items: List[str] | None = Depends(get_cached_reference(list, False))
 ) -> AnySourceSubscriptionRequest:
     """Extract subscriptions from unitop and authorize all sources."""
+    data_items = data_items or []
+    cached_data_items = cached_data_items or []
+    data_items.extend(cached_data_items)
+    
     data_items = set(data_items or list(unitop.data_mapping.keys()))
     subscriptions=[
         unitop.data_mapping[data_item] for data_item in data_items if data_item in unitop.data_mapping

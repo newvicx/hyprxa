@@ -99,6 +99,15 @@ class TimeseriesSamples(Iterable[TimeseriesDocument]):
             )
 
 
+class UnitopSubscriptionRequest(BaseModel):
+    """Request for a subset of data items from a unitop."""
+    items: List[str]
+
+    @validator("items")
+    def _sort_data_items(cls, v: List[str]) -> List[str]:
+        return sorted(v)
+
+
 class SubscriptionMessage(BaseModel):
     """Base model for any message emitted from an integration.
     

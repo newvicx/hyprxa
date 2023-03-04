@@ -49,7 +49,7 @@ async def publish(
     return Status(status=StatusOptions.FAILED)
 
 
-@router.get("/stream/{topic}", response_class=EventSourceResponse, dependencies=[Depends(can_read)])
+@router.get("/{topic}/stream", response_class=EventSourceResponse, dependencies=[Depends(can_read)])
 async def stream(
     topic: TopicDocument = Depends(get_topic),
     manager: EventManager = Depends(get_event_manager),
@@ -66,7 +66,7 @@ async def stream(
     return EventSourceResponse(iterble)
 
 
-@router.websocket("/stream/{topic}/ws")
+@router.websocket("/{topic}/ws")
 async def stream_ws(
     websocket: WebSocket,
     _: BaseUser = Depends(can_read),
