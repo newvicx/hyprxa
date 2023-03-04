@@ -136,10 +136,7 @@ async def recorded(
 
     chunk_size = 1000
     writer(["timestamp", "posted_by", "topic", "routing_key", "payload"])
-    filename = (
-        f"{start_time.strftime('%Y%m%d%H%M%S')}-"
-        f"{end_time.strftime('%Y%m%d%H%M%S')}-events{suffix}"
-    )
+    filename = f"{int(datetime.utcnow().timestamp()*1_000_000)}{suffix}"
 
     return StreamingResponse(
         chunked_transfer(
