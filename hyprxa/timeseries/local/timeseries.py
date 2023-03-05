@@ -289,9 +289,12 @@ class Timeseries:
         l = len(self)
         if not self._timechunks or index >= l:
             raise IndexError("timeseries index out of range")
+        min_retained = self.min_retained
+        start_index = bisect.bisect_left(self._timechunks[0], min_retained)
         if index < 0:
-            index = l + index
-        
+            index = l + start_index + index
+        else:
+            index = start_index + index
         # This gets us the index of the target chunk
         chunk = index//self._chunk_size
         # This gets us the index within the chunk

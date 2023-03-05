@@ -49,7 +49,7 @@ async def sources() -> AvailableSources:
     return {"sources": [source.source for source in _SOURCES]}
 
 
-@router.post("/{unitop}/subscribe", response_model=ReferenceToken)
+@router.post("/subscribe", response_model=ReferenceToken, dependencies=[Depends(can_read)])
 async def subscribe(
     token: ReferenceToken = Depends(get_reference_token(UnitopSubscriptionRequest))
 ) -> ReferenceToken:

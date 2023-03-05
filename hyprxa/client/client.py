@@ -23,10 +23,11 @@ from httpx import (
 from pydantic import BaseModel
 
 from hyprxa.auth.models import BaseUser
+from hyprxa.caching.token import ReferenceToken
 from hyprxa.dependencies.info import Info
 from hyprxa.client.base import HyprxaHttpxAsyncClient, HyprxaHttpxClient
 from hyprxa.events.models import Event, EventDocument, EventQueryResult
-from hyprxa.timeseries.models import SubscriptionMessage
+from hyprxa.timeseries.models import SubscriptionMessage, UnitopSubscriptionRequest
 from hyprxa.timeseries.sources import AvailableSources
 from hyprxa.topics.models import Topic, TopicDocument, TopicQueryResult
 from hyprxa.unitops.models import UnitOp, UnitOpDocument, UnitOpQueryResult
@@ -139,9 +140,9 @@ class HyprxaClient:
         topic: str,
         routing_key: str | None = None
     ) -> Iterable[EventDocument]:
-        """Send a GET request to /events/stream/{topic} and stream events."""
+        """Send a GET request to /events/{topic}/stream and stream events."""
         params = QueryParams(routingKey=routing_key)
-        path = f"/events/stream/{topic}"
+        path = f"/events/{topic}/stream"
         for data in self._sse("GET", path, params):
             yield EventDocument(**data)
 
@@ -199,18 +200,28 @@ class HyprxaClient:
         
         params = QueryParams(q=q, mapSubscriptions=map_subscriptions)
         return self._get("/timeseries/unitop/search", UnitOpQueryResult, params=params)
+
+    def subscribe_to_data_items(
+        self,
+        data_items: Sequence[str]
+    ) -> ReferenceToken:
+        """Send a POST request to /timeseries/subscribe."""
+        data_items = list(data_items)
+        data = UnitopSubscriptionRequest(items=data_items).dict()
+        return self._post(f"/timeseries/subscribe", ReferenceToken, data)
     
     def stream_data(
         self,
         unitop: str,
         data_items: Sequence[str] | None = None
     ) -> Iterable[SubscriptionMessage]:
-        """Send a GET request to /timeseries/stream/{unitop} and stream data."""
+        """Send a GET request to /timeseries/{unitop}/stream and stream data."""
         params = None
         if data_items:
-            params = QueryParams(dataItem=data_items)
+            token = self.subscribe_to_data_items(data_items)
+            params = QueryParams(token=token.token)
 
-        path = f"/timeseries/stream/{unitop}"
+        path = f"/timeseries/{unitop}/stream"
         for data in self._sse("GET", path, params):
             yield SubscriptionMessage.parse_obj(data)
 
@@ -223,7 +234,7 @@ class HyprxaClient:
         timezone: str | None = None,
         limit: int | None = 5000
     ) -> SubscriptionMessage:
-        """Send a GET request to /timeseries/{unitop}"""
+        """Send a GET request to /timeseries/{unitop}/samples"""
         params = QueryParams(
             dataItem=data_item,
             startTime=start_time,
@@ -231,7 +242,7 @@ class HyprxaClient:
             timezone=timezone,
             limit=limit
         )
-        return self._get(f"/timeseries/{unitop}", SubscriptionMessage, params)
+        return self._get(f"/timeseries/{unitop}/samples", SubscriptionMessage, params)
 
     def download_data(
         self,
@@ -605,17 +616,27 @@ class HyprxaAsyncClient:
         params = QueryParams(q=q, mapSubscriptions=map_subscriptions)
         return await self._get("/timeseries/unitop/search", UnitOpQueryResult, params=params)
     
+    async def subscribe_to_data_items(
+        self,
+        data_items: Sequence[str]
+    ) -> ReferenceToken:
+        """Send a POST request to /timeseries/{unitop}/subscribe."""
+        data_items = list(data_items)
+        data = UnitopSubscriptionRequest(items=data_items).dict()
+        return await self._post(f"/timeseries/subscribe", ReferenceToken, data)
+    
     async def stream_data(
         self,
         unitop: str,
         data_items: Sequence[str] | None = None
-    ) -> AsyncIterable[SubscriptionMessage]:
-        """Send a GET request to /timeseries/stream/{unitop} and stream data."""
+    ) -> Iterable[SubscriptionMessage]:
+        """Send a GET request to /timeseries/{unitop}/stream and stream data."""
         params = None
         if data_items:
-            params = QueryParams(dataItem=data_items)
+            token = await self.subscribe_to_data_items(data_items)
+            params = QueryParams(token=token.token)
 
-        path = f"/timeseries/stream/{unitop}"
+        path = f"/timeseries/{unitop}/stream"
         async for data in self._sse("GET", path, params):
             yield SubscriptionMessage.parse_obj(data)
 
@@ -628,7 +649,7 @@ class HyprxaAsyncClient:
         timezone: str | None = None,
         limit: int | None = 5000
     ) -> SubscriptionMessage:
-        """Send a GET request to /timeseries/{unitop}"""
+        """Send a GET request to /timeseries/{unitop}/samples"""
         params = QueryParams(
             dataItem=data_item,
             startTime=start_time,
@@ -636,7 +657,7 @@ class HyprxaAsyncClient:
             timezone=timezone,
             limit=limit
         )
-        return await self._get(f"/timeseries/{unitop}", SubscriptionMessage, params)
+        return await self._get(f"/timeseries/{unitop}/samples", SubscriptionMessage, params)
 
     async def download_data(
         self,

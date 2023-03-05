@@ -11,7 +11,7 @@ from hyprxa.dependencies.db import get_mongo_client
 from hyprxa.dependencies.unitops import map_subscriptions
 from hyprxa.settings import TIMESERIES_SETTINGS, TIMESERIES_MANAGER_SETTINGS
 from hyprxa.timeseries.manager import TimeseriesManager
-from hyprxa.timeseries.models import AnySourceSubscriptionRequest
+from hyprxa.timeseries.models import AnySourceSubscriptionRequest, UnitopSubscriptionRequest
 from hyprxa.timeseries.sources import _SOURCES
 from hyprxa.unitops.models import UnitOpDocument
 from hyprxa._exceptions import NotConfiguredError
@@ -41,11 +41,13 @@ async def get_subscriptions(
     connection: HTTPConnection,
     unitop: UnitOpDocument = Depends(map_subscriptions),
     data_items: List[str] | None = Query(default=None, alias="dataItem"),
-    cached_data_items: List[str] | None = Depends(get_cached_reference(list, False))
+    cached_data_items: UnitopSubscriptionRequest | None = Depends(
+        get_cached_reference(UnitopSubscriptionRequest, False)
+    )
 ) -> AnySourceSubscriptionRequest:
     """Extract subscriptions from unitop and authorize all sources."""
     data_items = data_items or []
-    cached_data_items = cached_data_items or []
+    cached_data_items = cached_data_items.items if cached_data_items is not None else []
     data_items.extend(cached_data_items)
     
     data_items = set(data_items or list(unitop.data_mapping.keys()))

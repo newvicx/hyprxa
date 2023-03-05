@@ -103,9 +103,15 @@ class UnitopSubscriptionRequest(BaseModel):
     """Request for a subset of data items from a unitop."""
     items: List[str]
 
+    class Config:
+        frozen=True
+
     @validator("items")
     def _sort_data_items(cls, v: List[str]) -> List[str]:
         return sorted(v)
+
+    def __cache__(self) -> bytes:
+        return "".join(self.items).encode()
 
 
 class SubscriptionMessage(BaseModel):

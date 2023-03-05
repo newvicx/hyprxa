@@ -287,7 +287,7 @@ class CacheFuncHasher:
         elif hasattr(obj, "__cache__"):
             # Non hashable objects can define a __cache__ method that returns
             # a stable key across runs
-            return getattr(obj, "__cache__")
+            return getattr(obj, "__cache__")()
 
         else:
             # As a last resort, hash the output of the object's __reduce__ method
