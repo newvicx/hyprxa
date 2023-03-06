@@ -483,7 +483,7 @@ class HyprxaAsyncClient:
     ) -> None:
         httpx_settings = httpx_settings.copy() if httpx_settings else {}
         httpx_settings.setdefault("headers", {})
-
+        
         self._exit_stack = AsyncExitStack()
         self._closed = False
         self._started = False
@@ -555,9 +555,9 @@ class HyprxaAsyncClient:
         topic: str,
         routing_key: str | None = None
     ) -> AsyncIterable[EventDocument]:
-        """Send a GET request to /events/stream/{topic} and stream events."""
+        """Send a GET request to /events/{topic}/stream and stream events."""
         params = QueryParams(routingKey=routing_key)
-        path = f"/events/stream/{topic}"
+        path = f"/events/{topic}/stream"
         async for data in self._sse("GET", path, params):
             yield EventDocument(**data)
 
